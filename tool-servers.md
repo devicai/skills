@@ -380,7 +380,7 @@ POST /api/v1/tool-servers/:toolServerId/tools
     "endpoint": "/contacts",
     "method": "POST",
     "bodyMode": "advanced",
-    "bodyJsonTemplate": "{\"name\": \"${name}\", \"email\": \"${email}\"}"
+    "bodyJsonTemplate": "{ name: params.name, email: params.email }"
   }
 }
 ```
@@ -406,7 +406,7 @@ PATCH /api/v1/tool-servers/:toolServerId/tools/:toolName
 | `pathParametersKeys` | string[] | Parameters to include in URL path |
 | `bodyPropertyKey` | string | Parameter to use as request body (bodyMode: simple) |
 | `bodyMode` | string | Body mode: `simple` or `advanced` |
-| `bodyJsonTemplate` | string | JSON body template with `${paramName}` placeholders |
+| `bodyJsonTemplate` | string | JavaScript expression returning request body object. Access parameters via `params.<paramName>` |
 | `isFormDataBody` | boolean | Send body as multipart/form-data |
 | `customHeaders` | array | Custom headers `[{headerName, value}]` |
 | `responsePostProcessingEnabled` | boolean | Enable JS expression post-processing |
@@ -526,7 +526,7 @@ Complete schema for a tool definition:
   "queryParametersKeys": ["queryParam"],
   "bodyPropertyKey": "bodyParam",
   "bodyMode": "simple",
-  "bodyJsonTemplate": "{\"key\": \"${value}\"}",
+  "bodyJsonTemplate": "{ key: params.value }",
   "isFormDataBody": false,
   "customHeaders": [
     {"headerName": "X-Custom-Header", "value": "custom-value"}
@@ -541,7 +541,7 @@ Complete schema for a tool definition:
 - **Path Parameters**: Use `${paramName}` in the endpoint URL and list in `pathParametersKeys`
 - **Query Parameters**: List parameter names in `queryParametersKeys`
 - **Body (Simple Mode)**: Specify the parameter name in `bodyPropertyKey`
-- **Body (Advanced Mode)**: Use `bodyJsonTemplate` with `${paramName}` placeholders
+- **Body (Advanced Mode)**: Use `bodyJsonTemplate` with a JavaScript expression. Access tool parameters via `params.<paramName>` (e.g., `{ name: params.name, email: params.email }`)
 
 ### Response Post-Processing
 
