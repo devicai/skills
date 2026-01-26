@@ -1,3 +1,8 @@
+---
+name: devic-ui
+description: Devic UI is a react component library to integrate AI UI components like chats and agents executions handler directly in your code base connected to devicai API
+---
+
 # Devic UI Integration Guide
 
 This guide explains how to integrate the `@devicai/ui` library into your React application to add AI assistant chat capabilities.
