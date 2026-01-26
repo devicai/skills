@@ -4,6 +4,16 @@ The Agents API allows you to manage autonomous AI agents that execute multi-step
 
 ## Endpoints Overview
 
+### Agent Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/agents` | List all agents |
+| GET | `/api/v1/agents/:agentId` | Get agent by ID |
+| POST | `/api/v1/agents` | Create a new agent |
+| PATCH | `/api/v1/agents/:agentId` | Update an agent |
+| DELETE | `/api/v1/agents/:agentId` | Delete an agent |
+
 ### Thread Management
 
 | Method | Endpoint | Description |
@@ -114,6 +124,275 @@ Agents access tools through the `availableToolsGroupsUids` property:
 4. Use `enabledTools` to restrict to a specific subset
 
 **Example**: An agent with `availableToolsGroupsUids: ["crm-tools", "email-tools"]` can use all tools from both the CRM and Email tool groups during execution.
+
+---
+
+## List Agents
+
+Retrieves a paginated list of all agents.
+
+```
+GET /api/v1/agents
+```
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `offset` | number | 0 | Number of items to skip |
+| `limit` | number | 10 | Maximum items to return (max: 100) |
+| `archived` | boolean | - | Filter by archived status |
+
+### Example Request
+
+```bash
+curl -X GET "https://api.devic.ai/api/v1/agents?limit=20" \
+  -H "Authorization: Bearer devic-your-api-key"
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "agents": [
+      {
+        "_id": "65a1b2c3d4e5f6789012345",
+        "name": "Sales Assistant Agent",
+        "description": "Helps with sales inquiries",
+        "disabled": false,
+        "archived": false,
+        "provider": "openai",
+        "llm": "gpt-4o",
+        "creationTimestampMs": 1705315800000,
+        "assistantSpecialization": {
+          "presets": "You are a sales assistant...",
+          "availableToolsGroupsUids": ["crm-tools"]
+        }
+      }
+    ],
+    "total": 5,
+    "offset": 0,
+    "limit": 20,
+    "hasMore": false
+  }
+}
+```
+
+---
+
+## Get Agent by ID
+
+Retrieves detailed information about a specific agent.
+
+```
+GET /api/v1/agents/:agentId
+```
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `agentId` | string | The unique identifier of the agent |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65a1b2c3d4e5f6789012345",
+    "name": "Sales Assistant Agent",
+    "description": "Helps with sales inquiries",
+    "disabled": false,
+    "archived": false,
+    "provider": "openai",
+    "llm": "gpt-4o",
+    "assistantSpecialization": {
+      "identifier": "sales-assistant",
+      "presets": "You are a sales assistant...",
+      "availableToolsGroupsUids": ["crm-tools", "email-tools"],
+      "enabledTools": ["search_contacts", "send_email"]
+    },
+    "maxExecutionInputTokens": 100000,
+    "maxExecutionToolCalls": 50,
+    "evaluationConfig": {
+      "enabled": true
+    }
+  }
+}
+```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | Agent not found |
+
+---
+
+## Create Agent
+
+Creates a new agent with the provided configuration.
+
+```
+POST /api/v1/agents
+```
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Agent name |
+| `description` | string | No | Agent description |
+| `imgUrl` | string | No | Image URL for the agent |
+| `assistantSpecialization` | object | No | Configuration (see below) |
+| `provider` | string | No | LLM provider override |
+| `llm` | string | No | Model name override |
+| `maxExecutionInputTokens` | number | No | Max input tokens per execution |
+| `maxExecutionToolCalls` | number | No | Max tool calls per execution |
+| `maxExecutionFrequency` | number | No | Max executions in timeframe |
+| `executionFrequencyIntervalMs` | number | No | Timeframe for frequency limit |
+| `concurrentExecutionLimit` | number | No | Max concurrent executions |
+| `agentNotificationConfig` | object | No | Notification settings |
+| `evaluationConfig` | object | No | Evaluation settings |
+
+### assistantSpecialization Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `presets` | string | System prompt / instructions |
+| `availableToolsGroupsUids` | string[] | Tool group IDs the agent can use |
+| `enabledTools` | string[] | Explicit subset of enabled tool names |
+| `model` | string | Default model |
+| `provider` | string | Default LLM provider |
+| `codeSnippetIds` | string[] | Code snippets available to the agent |
+| `subagentsIds` | string[] | Other agents this agent can invoke |
+
+### Example Request
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/agents" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Customer Support Agent",
+    "description": "Handles customer support tickets",
+    "assistantSpecialization": {
+      "presets": "You are a customer support agent. Be helpful and professional.",
+      "availableToolsGroupsUids": ["support-tools", "crm-tools"],
+      "model": "gpt-4o"
+    },
+    "maxExecutionToolCalls": 30,
+    "evaluationConfig": {
+      "enabled": true
+    }
+  }'
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "65a1b2c3d4e5f6789012345",
+    "name": "Customer Support Agent",
+    "description": "Handles customer support tickets",
+    "creationTimestampMs": 1705315800000,
+    "assistantSpecialization": {
+      "presets": "You are a customer support agent...",
+      "availableToolsGroupsUids": ["support-tools", "crm-tools"]
+    }
+  }
+}
+```
+
+---
+
+## Update Agent
+
+Updates an existing agent. Supports partial updates.
+
+```
+PATCH /api/v1/agents/:agentId
+```
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `agentId` | string | The unique identifier of the agent |
+
+### Request Body
+
+All fields are optional. Only provided fields will be updated.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Agent name |
+| `description` | string | Agent description |
+| `imgUrl` | string | Image URL |
+| `assistantSpecialization` | object | Configuration update |
+| `disabled` | boolean | Disable/enable the agent |
+| `archived` | boolean | Archive/unarchive the agent |
+| `provider` | string | LLM provider override |
+| `llm` | string | Model name override |
+| `maxExecutionInputTokens` | number | Max input tokens |
+| `maxExecutionToolCalls` | number | Max tool calls |
+| `evaluationConfig` | object | Evaluation settings |
+
+### Example Request
+
+```bash
+curl -X PATCH "https://api.devic.ai/api/v1/agents/65a1b2c3d4e5f6789012345" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Updated description",
+    "assistantSpecialization": {
+      "presets": "Updated system prompt...",
+      "enabledTools": ["search_contacts"]
+    },
+    "maxExecutionToolCalls": 50
+  }'
+```
+
+---
+
+## Delete Agent
+
+Deletes an agent. Note: This does not delete associated threads.
+
+```
+DELETE /api/v1/agents/:agentId
+```
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `agentId` | string | The unique identifier of the agent |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "message": "Agent deleted successfully",
+    "deletedId": "65a1b2c3d4e5f6789012345"
+  }
+}
+```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | Agent not found |
 
 ---
 
