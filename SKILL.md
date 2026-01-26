@@ -67,6 +67,75 @@ All API responses follow a standardized format:
 }
 ```
 
+## Architecture Overview
+
+Understanding how the core entities relate to each other is essential for building integrations with the Devic platform.
+
+### Entity Relationships
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Tool Server                             │
+│  (External API integration with tool definitions)               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ referenced by
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       Tools Group                               │
+│  (Logical grouping of tools - built-in or from tool server)     │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ availableToolsGroupsUids
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              Assistant Specialization                           │
+│  (Configuration: presets, tools, model, provider, etc.)         │
+└─────────────────────────────────────────────────────────────────┘
+                    /                   \
+                   /                     \
+                  ▼                       ▼
+┌──────────────────────┐     ┌──────────────────────────────────┐
+│     Assistant        │     │            Agent                  │
+│  (Chat interface)    │     │  (Autonomous execution threads)   │
+└──────────────────────┘     └──────────────────────────────────┘
+         │                              │
+         ▼                              ▼
+┌──────────────────────┐     ┌──────────────────────────────────┐
+│   Chat Histories     │     │          Threads                  │
+│  (Conversations)     │     │  (Execution sessions with tasks)  │
+└──────────────────────┘     └──────────────────────────────────┘
+```
+
+### Key Concepts
+
+**Assistant Specialization**: The core configuration object that defines how an AI assistant or agent behaves. It includes:
+- `presets` - System prompt instructions
+- `availableToolsGroupsUids` - Array of tool group identifiers that determine available tools
+- `enabledTools` - Optional subset of explicitly enabled tool identifiers
+- `model` / `provider` - Default LLM configuration
+- `memoryDocuments` - Persistent context documents
+
+**Agents**: Autonomous executors that use an embedded `assistantSpecialization` configuration. When you create an agent, you configure its specialization which determines:
+- What tools it can use (via `availableToolsGroupsUids`)
+- How it behaves (via `presets`)
+- What LLM powers it (via `model`/`provider`)
+
+**Tool Servers**: External API integrations that define tools. A tool server:
+1. Is created via the Tool Servers API
+2. Gets assigned to a **Tools Group**
+3. The group's UID is added to an assistant/agent's `availableToolsGroupsUids`
+4. The tools become available for that assistant/agent to use
+
+### Workflow Example
+
+To give an agent access to a custom CRM API:
+
+1. **Create Tool Server** with your CRM endpoint definitions
+2. **Create/Configure a Tools Group** that references the tool server (done via Devic dashboard)
+3. **Update the Agent's assistantSpecialization** to include the tools group UID in `availableToolsGroupsUids`
+4. The agent can now call CRM tools during execution
+
 ## API Sections
 
 The Devic API is organized into three main sections:

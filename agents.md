@@ -66,6 +66,57 @@ Threads can be in one of the following states:
 
 ---
 
+## Agent Structure
+
+Agents are configured through an embedded `assistantSpecialization` object that determines their behavior and capabilities.
+
+### Key Agent Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `_id` | string | Unique agent identifier |
+| `name` | string | Agent display name |
+| `description` | string | Agent description |
+| `assistantSpecialization` | object | Core configuration (see below) |
+| `provider` | string | LLM provider override |
+| `llm` | string | Model name override |
+| `disabled` | boolean | Whether agent is disabled |
+| `maxExecutionInputTokens` | number | Token limit per execution |
+| `maxExecutionToolCalls` | number | Max tool calls per execution |
+| `evaluationConfig` | object | Evaluation settings |
+
+### assistantSpecialization Object
+
+The `assistantSpecialization` defines the agent's behavior, tools, and capabilities:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `identifier` | string | Unique specialization identifier |
+| `name` | string | Specialization name |
+| `presets` | string | System prompt / instructions |
+| `availableToolsGroupsUids` | string[] | Tool group IDs the agent can use |
+| `enabledTools` | string[] | Explicit subset of enabled tool names |
+| `model` | string | Default model |
+| `provider` | string | Default LLM provider |
+| `memoryDocuments` | object[] | Persistent context documents |
+| `codeSnippetIds` | string[] | Code snippets available to the agent |
+| `subagentsIds` | string[] | Other agents this agent can invoke |
+
+### Tool Access
+
+Agents access tools through the `availableToolsGroupsUids` property:
+
+1. Each UID references a **Tools Group**
+2. Tools Groups can contain:
+   - Built-in platform tools
+   - External tools from a **Tool Server**
+3. When an agent executes, it can call any tool from its assigned groups
+4. Use `enabledTools` to restrict to a specific subset
+
+**Example**: An agent with `availableToolsGroupsUids: ["crm-tools", "email-tools"]` can use all tools from both the CRM and Email tool groups during execution.
+
+---
+
 ## Create Thread
 
 Creates a new execution thread for the specified agent.

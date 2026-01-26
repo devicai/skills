@@ -16,6 +16,52 @@ The Assistants API allows you to interact with AI assistants that can process me
 
 ---
 
+## Assistant Specialization Structure
+
+Assistant Specializations define how an assistant behaves, what tools it can use, and how it processes messages.
+
+### Key Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `identifier` | string | Unique identifier used in API paths |
+| `name` | string | Display name |
+| `description` | string | Description of the assistant's purpose |
+| `presets` | string | System prompt / instructions |
+| `availableToolsGroupsUids` | string[] | Tool group IDs the assistant can use |
+| `enabledTools` | string[] | Explicit subset of enabled tool names |
+| `model` | string | Default LLM model |
+| `provider` | string | Default LLM provider |
+| `memoryDocuments` | object[] | Persistent context documents |
+| `accessConfiguration` | object | Visibility and external access settings |
+
+### Tool Access
+
+Assistants access tools through `availableToolsGroupsUids`:
+
+1. Each UID references a **Tools Group**
+2. Tools Groups can include built-in tools or reference a **Tool Server**
+3. When processing messages, the assistant can invoke available tools
+4. Use `enabledTools` to restrict access to specific tools
+
+### Access Configuration
+
+Controls visibility and external API access:
+
+```json
+{
+  "accessConfiguration": {
+    "externalAccess": true,
+    "visibilityByRole": ["admin", "user"]
+  }
+}
+```
+
+- `externalAccess: true` - Makes the assistant available via the public API
+- `visibilityByRole` - Controls which user roles can see/use the assistant in the dashboard
+
+---
+
 ## List Assistant Specializations
 
 Retrieves a list of all available assistant specializations (both default and custom).

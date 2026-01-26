@@ -35,6 +35,60 @@ The Tool Servers API allows you to manage external tool integrations that agents
 
 ---
 
+## How Tool Servers Connect to Assistants and Agents
+
+Tool Servers provide external API capabilities to assistants and agents through a layered architecture:
+
+```
+Tool Server (API Definition)
+       │
+       │ assigned to
+       ▼
+  Tools Group (Logical Grouping)
+       │
+       │ referenced by availableToolsGroupsUids
+       ▼
+Assistant Specialization
+       │
+       ├──► Assistant (processes messages with tools)
+       │
+       └──► Agent (executes threads with tools)
+```
+
+### Integration Steps
+
+1. **Create Tool Server**: Define your external API tools via the Tool Servers API
+2. **Assign to Tools Group**: Link the tool server to a Tools Group (via Devic dashboard)
+3. **Configure Assistant/Agent**: Add the Tools Group UID to `availableToolsGroupsUids`
+4. **Tools Available**: The assistant/agent can now invoke tools during execution
+
+### Tool Server Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `_id` | string | Unique identifier |
+| `name` | string | Display name |
+| `description` | string | Purpose description |
+| `url` | string | Base URL for API calls |
+| `identifier` | string | URL-friendly identifier |
+| `enabled` | boolean | Whether tools are active |
+| `toolServerDefinitionId` | string | Link to tool definitions |
+| `authenticationConfig` | object | API authentication settings |
+| `mcpType` | boolean | Whether it's an MCP server |
+
+### Tool Execution Flow
+
+When an assistant or agent needs to call a tool:
+
+1. AI model decides to use a tool based on the user request
+2. Platform looks up the tool in the agent's available tool groups
+3. Finds the tool server associated with that tool
+4. Constructs the HTTP request using tool definition (endpoint, method, parameters)
+5. Applies authentication from `authenticationConfig`
+6. Executes the request and returns response to the AI model
+
+---
+
 ## List Tool Servers
 
 Retrieves a paginated list of all tool servers.
