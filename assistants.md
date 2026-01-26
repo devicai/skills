@@ -8,9 +8,10 @@ The Assistants API allows you to interact with AI assistants that can process me
 |--------|----------|-------------|
 | GET | `/api/v1/assistants` | List all assistant specializations |
 | GET | `/api/v1/assistants/:identifier` | Get specific assistant |
-| POST | `/api/v1/assistants/:identifier/messages` | Send message to assistant |
+| POST | `/api/v1/assistants/:identifier/messages` | Send message to assistant (sync or async) |
 | GET | `/api/v1/assistants/:identifier/chats` | List chat histories for assistant |
 | GET | `/api/v1/assistants/:identifier/chats/:chatUid` | Get specific chat history |
+| GET | `/api/v1/assistants/:identifier/chats/:chatUid/realtime` | Get real-time chat history (for async polling) |
 | POST | `/api/v1/assistants/chats` | Get all chat histories with filters |
 | GET | `/api/v1/assistants/tags` | Get unique tags from chat histories |
 
@@ -151,7 +152,7 @@ GET /api/v1/assistants/:identifier
 
 ## Send Message to Assistant
 
-Sends a message to the specified assistant and returns the response.
+Sends a message to the specified assistant and returns the response. Supports both synchronous (default) and asynchronous processing modes.
 
 ```
 POST /api/v1/assistants/:identifier/messages
@@ -162,6 +163,12 @@ POST /api/v1/assistants/:identifier/messages
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `identifier` | string | The unique identifier of the assistant |
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `async` | boolean | false | Enable async mode. Returns chatUid immediately and processes in background. |
 
 ### Request Body
 
@@ -174,7 +181,11 @@ POST /api/v1/assistants/:identifier/messages
 | `tags` | string[] | No | Tags to associate with this chat |
 | `metadata` | object | No | Custom metadata to store with the chat |
 
-### Example Request
+### Synchronous Mode (Default)
+
+When `async` is not set or `false`, the request blocks until the assistant finishes processing and returns the full response.
+
+#### Example Request (Sync)
 
 ```bash
 curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages" \
@@ -187,7 +198,7 @@ curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages" \
   }'
 ```
 
-### Response
+#### Response (Sync)
 
 ```json
 {
@@ -203,6 +214,39 @@ curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages" \
     }
   ]
 }
+```
+
+### Asynchronous Mode
+
+When `async=true`, the request returns immediately with a `chatUid`. Use this for long-running requests or when you want to avoid blocking. Poll the realtime endpoint to check for results.
+
+#### Example Request (Async)
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages?async=true" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Analyze this complex dataset and provide insights"
+  }'
+```
+
+#### Response (Async)
+
+```json
+{
+  "success": true,
+  "data": {
+    "chatUid": "550e8400-e29b-41d4-a716-446655440000"
+  }
+}
+```
+
+After receiving the `chatUid`, poll the realtime endpoint to get the processing status and results:
+
+```bash
+curl -X GET "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/realtime" \
+  -H "Authorization: Bearer devic-your-api-key"
 ```
 
 ### Error Responses
@@ -308,6 +352,92 @@ GET /api/v1/assistants/:identifier/chats/:chatUid
 | Status | Description |
 |--------|-------------|
 | 404 | Chat history not found or does not belong to the specified assistant |
+
+---
+
+## Get Real-Time Chat History
+
+Retrieves the real-time chat history from Redis cache. Use this endpoint to poll for results when using async mode.
+
+```
+GET /api/v1/assistants/:identifier/chats/:chatUid/realtime
+```
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `identifier` | string | The unique identifier of the assistant |
+| `chatUid` | string | The unique identifier of the chat conversation |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "chatUID": "550e8400-e29b-41d4-a716-446655440000",
+    "clientUID": "client-123",
+    "chatHistory": [
+      {
+        "role": "user",
+        "content": { "message": "Analyze this data" }
+      },
+      {
+        "role": "assistant",
+        "content": { "message": "Based on the analysis..." }
+      }
+    ],
+    "status": "completed",
+    "lastUpdatedAt": 1705312200000
+  }
+}
+```
+
+### Status Values
+
+| Status | Description |
+|--------|-------------|
+| `processing` | Message is currently being processed by the assistant |
+| `completed` | Processing finished successfully |
+| `error` | An error occurred during processing |
+
+### Polling Pattern for Async Mode
+
+When using async mode, implement a polling pattern:
+
+```javascript
+async function waitForResult(identifier, chatUid) {
+  const maxAttempts = 60; // 60 seconds timeout
+  const pollInterval = 1000; // 1 second
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const response = await fetch(
+      `https://api.devic.ai/api/v1/assistants/${identifier}/chats/${chatUid}/realtime`,
+      { headers: { "Authorization": "Bearer devic-your-api-key" } }
+    );
+    const result = await response.json();
+
+    if (result.data.status === 'completed') {
+      return result.data.chatHistory;
+    }
+
+    if (result.data.status === 'error') {
+      throw new Error('Processing failed');
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+
+  throw new Error('Timeout waiting for response');
+}
+```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | Real-time chat history not found |
 
 ---
 
