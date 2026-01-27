@@ -275,7 +275,128 @@ Enable file attachments in chat:
 />
 ```
 
+## Display Modes
+
+ChatDrawer supports two display modes via the `mode` prop:
+
+### Drawer Mode (default)
+
+Renders as an overlay panel with a floating trigger button. Can be toggled open/closed.
+
+```tsx
+<ChatDrawer
+  mode="drawer"
+  assistantId="my-assistant"
+  options={{
+    position: 'right',
+    defaultOpen: false,
+    zIndex: 1000,
+  }}
+/>
+```
+
+### Inline Mode
+
+Renders embedded in the page layout, always visible, no trigger button or toggle behavior.
+
+```tsx
+<ChatDrawer
+  mode="inline"
+  assistantId="my-assistant"
+  options={{
+    width: 400,
+    borderRadius: 12,
+  }}
+/>
+```
+
+## Resizable Drawer
+
+Enable drag-to-resize with width constraints:
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    resizable: true,
+    width: 400,
+    minWidth: 300,
+    maxWidth: 800,
+    position: 'right', // resize handle appears on the opposite edge
+  }}
+/>
+```
+
+## Custom Rendering
+
+### Custom Loading Indicator
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    loadingIndicator: <MySpinner />,
+  }}
+/>
+```
+
+### Custom Send Button
+
+The click handler is managed by an overlay, so the node doesn't need to handle click events.
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    sendButtonContent: <MyCustomIcon />,
+  }}
+/>
+```
+
+### Custom Tool Renderers
+
+Replace the default tool call summary with custom UI per tool name:
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    toolRenderers: {
+      search_products: (input, output) => (
+        <ProductGrid products={output.results} query={input.query} />
+      ),
+    },
+    toolIcons: {
+      search_products: <SearchIcon />,
+    },
+  }}
+/>
+```
+
 ## Theming
+
+### Using Props
+
+All color and typography properties can be set via `options`:
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    color: '#6366f1',                    // Primary color
+    backgroundColor: '#ffffff',          // Drawer background
+    textColor: '#1e293b',               // Text color
+    secondaryBackgroundColor: '#f8fafc', // Input/selector background
+    borderColor: '#e2e8f0',             // Border color
+    userBubbleColor: '#6366f1',         // User message bubble
+    userBubbleTextColor: '#ffffff',     // User message text
+    assistantBubbleColor: '#f1f5f9',    // Assistant message bubble
+    assistantBubbleTextColor: '#1e293b',// Assistant message text
+    sendButtonColor: '#6366f1',         // Send button background
+    fontFamily: '"Inter", sans-serif',  // Font override
+  }}
+/>
+```
 
 ### Using CSS Variables
 
@@ -493,6 +614,69 @@ const handleMessage = (message: ChatMessage) => {
   console.log(message.content.message);
 };
 ```
+
+## ChatDrawer Props Reference
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `mode` | `'drawer' \| 'inline'` | `'drawer'` | Display mode: overlay drawer or embedded inline |
+| `assistantId` | `string` | *required* | Assistant identifier |
+| `chatUid` | `string` | — | Existing chat UID to continue conversation |
+| `options` | `ChatDrawerOptions` | — | Display and behavior options (see below) |
+| `enabledTools` | `string[]` | — | Tools enabled from assistant's configured tool groups |
+| `modelInterfaceTools` | `ModelInterfaceTool[]` | — | Client-side tools for model interface protocol |
+| `tenantId` | `string` | — | Tenant ID (overrides provider) |
+| `tenantMetadata` | `Record<string, any>` | — | Tenant metadata (overrides provider) |
+| `apiKey` | `string` | — | API key (overrides provider) |
+| `baseUrl` | `string` | — | Base URL (overrides provider) |
+| `isOpen` | `boolean` | — | Controlled open state (drawer mode only) |
+| `className` | `string` | — | Additional CSS class |
+| `onMessageSent` | `(message) => void` | — | Fires when user sends a message |
+| `onMessageReceived` | `(message) => void` | — | Fires when assistant responds |
+| `onToolCall` | `(toolName, params) => void` | — | Fires when a tool is called |
+| `onError` | `(error) => void` | — | Fires on error |
+| `onChatCreated` | `(chatUid) => void` | — | Fires when a new chat is created |
+| `onOpen` | `() => void` | — | Fires when drawer opens |
+| `onClose` | `() => void` | — | Fires when drawer closes |
+| `onConversationChange` | `(chatUid) => void` | — | Fires when active conversation changes |
+
+## ChatDrawerOptions Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `position` | `'left' \| 'right'` | `'right'` | Drawer position |
+| `width` | `number \| string` | `'100%'` | Drawer width (px number or CSS string) |
+| `defaultOpen` | `boolean` | `false` | Whether drawer starts open |
+| `resizable` | `boolean` | `false` | Enable drag-to-resize handle |
+| `minWidth` | `number` | `300` | Minimum width when resizable (px) |
+| `maxWidth` | `number` | `800` | Maximum width when resizable (px) |
+| `zIndex` | `number` | `1000` | Z-index for the drawer |
+| `borderRadius` | `number \| string` | `0` | Border radius for the container |
+| `style` | `CSSProperties` | — | Additional inline styles |
+| `title` | `string \| ReactNode` | `'Chat'` | Header title |
+| `showAvatar` | `boolean` | `false` | Show assistant image next to title |
+| `welcomeMessage` | `string` | — | Welcome message shown at start |
+| `suggestedMessages` | `string[]` | — | Quick action suggestions |
+| `inputPlaceholder` | `string` | `'Type a message...'` | Input placeholder text |
+| `showToolTimeline` | `boolean` | `true` | Show tool execution timeline |
+| `enableFileUploads` | `boolean` | `false` | Enable file attachments |
+| `allowedFileTypes` | `AllowedFileTypes` | — | Filter by file type (images, documents, audio, video) |
+| `maxFileSize` | `number` | `10485760` | Max file size in bytes (10MB) |
+| `color` | `string` | `'#1890ff'` | Primary theme color |
+| `backgroundColor` | `string` | — | Drawer background color |
+| `textColor` | `string` | — | Text color |
+| `secondaryBackgroundColor` | `string` | — | Input/selector background color |
+| `borderColor` | `string` | — | Border color |
+| `userBubbleColor` | `string` | — | User message bubble background |
+| `userBubbleTextColor` | `string` | — | User message bubble text |
+| `assistantBubbleColor` | `string` | — | Assistant message bubble background |
+| `assistantBubbleTextColor` | `string` | — | Assistant message bubble text |
+| `sendButtonColor` | `string` | — | Send button background color |
+| `fontFamily` | `string` | — | Font family override |
+| `loadingIndicator` | `ReactNode` | — | Custom loading spinner |
+| `sendButtonContent` | `ReactNode` | — | Custom send button content |
+| `toolRenderers` | `Record<string, (input, output) => ReactNode>` | — | Custom tool call renderers by tool name |
+| `toolIcons` | `Record<string, ReactNode>` | — | Custom tool call icons by tool name |
 
 ## Troubleshooting
 
