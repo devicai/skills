@@ -179,6 +179,21 @@ Configure external tool integrations that agents and assistants can use.
 
 For detailed documentation, see [tool-servers.md](tool-servers.md).
 
+### 4. Feedback API
+
+Collect user feedback on AI responses from both assistants and agents.
+
+- Submit feedback (positive/negative) on chat messages
+- Submit feedback on agent thread messages
+- Retrieve feedback history for chats and threads
+- Support for structured feedback data (ratings, categories, etc.)
+
+**Base paths:**
+- Chat feedback: `/api/v1/assistants/:identifier/chats/:chatUid/feedback`
+- Thread feedback: `/api/v1/agents/threads/:threadId/feedback`
+
+For detailed documentation, see [feedback.md](feedback.md).
+
 ## Pagination
 
 List endpoints support pagination with the following query parameters:
