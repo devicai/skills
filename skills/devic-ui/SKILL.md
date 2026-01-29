@@ -617,6 +617,11 @@ import type {
   // API types
   RealtimeChatHistory,
   AssistantSpecialization,
+
+  // Feedback types
+  FeedbackSubmission,
+  FeedbackEntry,
+  FeedbackTheme,
 } from '@devicai/ui';
 
 // Use types in your code
@@ -704,6 +709,115 @@ const handleCommandResult = (result: CommandBarResult) => {
 | `sendButtonContent` | `ReactNode` | — | Custom send button content |
 | `toolRenderers` | `Record<string, (input, output) => ReactNode>` | — | Custom tool call renderers by tool name |
 | `toolIcons` | `Record<string, ReactNode>` | — | Custom tool call icons by tool name |
+| `showFeedback` | `boolean` | `true` | Show thumbs up/down feedback buttons on assistant messages |
+
+## Message Feedback
+
+Both ChatDrawer and AICommandBar support message feedback (thumbs up/down with optional comments). Feedback is submitted to the Devic API and associated with the chat.
+
+### ChatDrawer Feedback
+
+Feedback buttons appear on assistant messages by default. Users can click thumbs up/down and optionally add a comment via a modal.
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    showFeedback: true, // default: true
+  }}
+/>
+```
+
+### AICommandBar Feedback
+
+When `showResultCard` is enabled, feedback buttons appear below the response. The feedback UI automatically adapts to the command bar's theme.
+
+```tsx
+<AICommandBar
+  assistantId="my-assistant"
+  options={{
+    showResultCard: true,
+    // Feedback inherits theme from these options:
+    backgroundColor: '#1f2937',
+    textColor: '#f9fafb',
+    borderColor: '#374151',
+  }}
+/>
+```
+
+### Feedback Theming
+
+The feedback modal and action buttons automatically inherit theme colors from the parent component. For custom implementations, you can pass a `FeedbackTheme` object:
+
+```tsx
+interface FeedbackTheme {
+  backgroundColor?: string;      // Modal background
+  textColor?: string;            // Primary text
+  textMutedColor?: string;       // Muted/secondary text
+  secondaryBackgroundColor?: string; // Button backgrounds, hover states
+  borderColor?: string;          // Modal borders
+  primaryColor?: string;         // Primary action color
+  primaryHoverColor?: string;    // Primary button hover
+}
+```
+
+### Feedback API
+
+Feedback is automatically submitted to the Devic API using these endpoints:
+
+- `POST /api/v1/assistants/:identifier/chats/:chatUid/feedback` - Submit feedback
+- `GET /api/v1/assistants/:identifier/chats/:chatUid/feedback` - Get feedback entries
+
+You can also use the API client directly:
+
+```tsx
+import { DevicApiClient, FeedbackSubmission } from '@devicai/ui';
+
+const client = new DevicApiClient({ apiKey: 'your-api-key' });
+
+// Submit feedback
+const feedback: FeedbackSubmission = {
+  messageId: 'message-uid',
+  feedback: true,  // true = positive, false = negative
+  feedbackComment: 'Very helpful response!',
+  feedbackData: { category: 'accuracy' },
+};
+
+await client.submitChatFeedback('assistant-id', 'chat-uid', feedback);
+
+// Get all feedback for a chat
+const entries = await client.getChatFeedback('assistant-id', 'chat-uid');
+```
+
+### Feedback Types
+
+```tsx
+import type {
+  FeedbackSubmission,
+  FeedbackEntry,
+  FeedbackTheme,
+} from '@devicai/ui';
+
+// Submission payload
+interface FeedbackSubmission {
+  messageId: string;
+  feedback?: boolean;              // true = positive, false = negative
+  feedbackComment?: string;        // Optional comment
+  feedbackData?: Record<string, any>; // Custom metadata
+}
+
+// Response from API
+interface FeedbackEntry {
+  _id: string;
+  requestId: string;
+  chatUID?: string;
+  feedback?: boolean;
+  feedbackComment?: string;
+  feedbackData?: Record<string, any>;
+  creationTimestamp: string;
+  lastEditTimestamp?: string;
+}
+```
 
 ## AICommandBar Component
 
