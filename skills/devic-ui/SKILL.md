@@ -592,26 +592,53 @@ All types are exported for TypeScript users:
 
 ```tsx
 import type {
+  // Chat types
   ChatMessage,
   ChatDrawerProps,
   ChatDrawerOptions,
+  ChatDrawerHandle,
+
+  // AICommandBar types
+  AICommandBarProps,
+  AICommandBarOptions,
+  AICommandBarHandle,
+  AICommandBarCommand,
+  CommandBarResult,
+  ToolCallSummary,
+
+  // Tool types
   ModelInterfaceTool,
   ModelInterfaceToolSchema,
+
+  // Hook types
   UseDevicChatOptions,
   UseDevicChatResult,
+
+  // API types
   RealtimeChatHistory,
   AssistantSpecialization,
 } from '@devicai/ui';
 
 // Use types in your code
-const options: ChatDrawerOptions = {
+const chatOptions: ChatDrawerOptions = {
   position: 'right',
   width: 400,
   welcomeMessage: 'Hello!',
 };
 
+const commandBarOptions: AICommandBarOptions = {
+  shortcut: 'cmd+k',
+  placeholder: 'Ask AI...',
+};
+
 const handleMessage = (message: ChatMessage) => {
   console.log(message.content.message);
+};
+
+const handleCommandResult = (result: CommandBarResult) => {
+  console.log('Chat UID:', result.chatUid);
+  console.log('Tool calls:', result.toolCalls.length);
+  console.log('Response:', result.message.content);
 };
 ```
 
@@ -677,6 +704,323 @@ const handleMessage = (message: ChatMessage) => {
 | `sendButtonContent` | `ReactNode` | — | Custom send button content |
 | `toolRenderers` | `Record<string, (input, output) => ReactNode>` | — | Custom tool call renderers by tool name |
 | `toolIcons` | `Record<string, ReactNode>` | — | Custom tool call icons by tool name |
+
+## AICommandBar Component
+
+A floating command bar (similar to Spotlight/Command Palette) for quick AI interactions. It provides a minimal input interface that processes messages, shows tool execution progress, and displays results in a compact card.
+
+### Basic Usage
+
+```tsx
+import { AICommandBar } from '@devicai/ui';
+
+function App() {
+  return (
+    <AICommandBar
+      assistantId="my-assistant"
+      options={{
+        placeholder: 'Ask AI...',
+        shortcut: 'cmd+k',
+      }}
+      onResponse={({ message, toolCalls }) => {
+        console.log('Response:', message.content);
+      }}
+    />
+  );
+}
+```
+
+### Fixed Position with Keyboard Shortcut
+
+```tsx
+<AICommandBar
+  assistantId="support-assistant"
+  options={{
+    position: 'fixed',
+    fixedPlacement: { bottom: 20, right: 20 },
+    shortcut: 'cmd+j',
+    placeholder: 'Ask AI about your data...',
+    showShortcutHint: true,
+  }}
+/>
+```
+
+### Integration with ChatDrawer
+
+Hand off conversations to the full ChatDrawer after getting a quick answer:
+
+```tsx
+import { useRef } from 'react';
+import { AICommandBar, ChatDrawer, ChatDrawerHandle } from '@devicai/ui';
+
+function App() {
+  const drawerRef = useRef<ChatDrawerHandle>(null);
+
+  return (
+    <>
+      <AICommandBar
+        assistantId="my-assistant"
+        onExecute="openDrawer"
+        chatDrawerRef={drawerRef}
+        options={{
+          shortcut: 'cmd+k',
+          showResultCard: false, // Don't show result since drawer opens
+        }}
+      />
+
+      <ChatDrawer
+        ref={drawerRef}
+        assistantId="my-assistant"
+      />
+    </>
+  );
+}
+```
+
+### Command History
+
+Command history is enabled by default. Users can:
+- Press **Arrow Up/Down** to navigate through previous prompts
+- Use the `/history` command to see the history list
+- Click on a history item to reuse it
+
+```tsx
+<AICommandBar
+  assistantId="my-assistant"
+  options={{
+    enableHistory: true,           // default: true
+    maxHistoryItems: 50,           // default: 50
+    historyStorageKey: 'my-app-command-history', // localStorage key
+    showHistoryCommand: true,      // adds /history command
+  }}
+/>
+```
+
+### Commands System
+
+Define slash commands that trigger predefined messages:
+
+```tsx
+<AICommandBar
+  assistantId="my-assistant"
+  options={{
+    commands: [
+      {
+        keyword: 'summarize',
+        description: 'Summarize the current page',
+        message: 'Please summarize the content of this page.',
+        icon: <SummarizeIcon />,
+      },
+      {
+        keyword: 'translate',
+        description: 'Translate selected text',
+        message: 'Translate the following text to Spanish: ',
+      },
+      {
+        keyword: 'explain',
+        description: 'Explain like I\'m five',
+        message: 'Explain this concept in simple terms: ',
+      },
+    ],
+  }}
+/>
+```
+
+When the user types `/`, a dropdown shows available commands. Arrow keys navigate, Enter selects, Tab autocompletes.
+
+### Custom Tool Rendering
+
+Display tool calls with custom icons and renderers:
+
+```tsx
+<AICommandBar
+  assistantId="my-assistant"
+  options={{
+    toolIcons: {
+      search_database: <DatabaseIcon />,
+      fetch_weather: <WeatherIcon />,
+    },
+    toolRenderers: {
+      search_database: (input, output) => (
+        <div className="custom-result">
+          Found {output.count} results for "{input.query}"
+        </div>
+      ),
+    },
+  }}
+/>
+```
+
+### Theming
+
+```tsx
+<AICommandBar
+  assistantId="my-assistant"
+  options={{
+    color: '#6366f1',              // Primary color (spinner, badges)
+    backgroundColor: '#ffffff',    // Bar background
+    textColor: '#1f2937',          // Text color
+    borderColor: '#e5e7eb',        // Border color
+    borderRadius: 12,              // Border radius (px or string)
+    fontFamily: 'Inter, sans-serif',
+    fontSize: 14,
+    padding: '12px 16px',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+    animationDuration: 200,        // ms
+  }}
+/>
+```
+
+### Controlled Visibility
+
+```tsx
+function App() {
+  const [isVisible, setIsVisible] = useState(false);
+  const commandBarRef = useRef<AICommandBarHandle>(null);
+
+  return (
+    <>
+      <button onClick={() => commandBarRef.current?.toggle()}>
+        Toggle Command Bar
+      </button>
+
+      <AICommandBar
+        ref={commandBarRef}
+        assistantId="my-assistant"
+        isVisible={isVisible}
+        onVisibilityChange={setIsVisible}
+        onOpen={() => console.log('Opened')}
+        onClose={() => console.log('Closed')}
+      />
+    </>
+  );
+}
+```
+
+### Using the Hook Directly
+
+For custom UI implementations:
+
+```tsx
+import { useAICommandBar, formatShortcut } from '@devicai/ui';
+
+function CustomCommandBar() {
+  const {
+    isVisible,
+    open,
+    close,
+    toggle,
+    inputValue,
+    setInputValue,
+    inputRef,
+    focus,
+    isProcessing,
+    currentToolSummary,
+    toolCalls,
+    result,
+    error,
+    history,
+    showingHistory,
+    showingCommands,
+    filteredCommands,
+    submit,
+    reset,
+    handleKeyDown,
+  } = useAICommandBar({
+    assistantId: 'my-assistant',
+    options: { shortcut: 'cmd+k' },
+    onResponse: (result) => console.log(result),
+  });
+
+  if (!isVisible) return null;
+
+  return (
+    <div className="my-command-bar">
+      {isProcessing ? (
+        <span>{currentToolSummary || 'Processing...'}</span>
+      ) : (
+        <input
+          ref={inputRef}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Ask AI..."
+        />
+      )}
+    </div>
+  );
+}
+```
+
+## AICommandBar Props Reference
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `assistantId` | `string` | *required* | Assistant identifier |
+| `apiKey` | `string` | — | API key (overrides provider) |
+| `baseUrl` | `string` | — | Base URL (overrides provider) |
+| `tenantId` | `string` | — | Tenant ID (overrides provider) |
+| `tenantMetadata` | `Record<string, any>` | — | Tenant metadata |
+| `options` | `AICommandBarOptions` | — | Display and behavior options |
+| `isVisible` | `boolean` | — | Controlled visibility state |
+| `onVisibilityChange` | `(visible: boolean) => void` | — | Fires when visibility changes |
+| `onExecute` | `'openDrawer' \| 'callback'` | `'callback'` | What to do on completion |
+| `chatDrawerRef` | `RefObject<ChatDrawerHandle>` | — | Ref to ChatDrawer (for openDrawer mode) |
+| `onResponse` | `(result: CommandBarResult) => void` | — | Fires on completion (callback mode) |
+| `modelInterfaceTools` | `ModelInterfaceTool[]` | — | Client-side tools |
+| `onSubmit` | `(message: string) => void` | — | Fires when user submits |
+| `onToolCall` | `(toolName, params) => void` | — | Fires when a tool is called |
+| `onError` | `(error: Error) => void` | — | Fires on error |
+| `onOpen` | `() => void` | — | Fires when bar opens |
+| `onClose` | `() => void` | — | Fires when bar closes |
+| `className` | `string` | — | Additional CSS class |
+
+## AICommandBarOptions Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `position` | `'inline' \| 'fixed'` | `'inline'` | Positioning mode |
+| `fixedPlacement` | `{ top?, right?, bottom?, left? }` | — | Position offsets for fixed mode |
+| `shortcut` | `string` | — | Keyboard shortcut (e.g., `'cmd+k'`, `'ctrl+j'`) |
+| `showShortcutHint` | `boolean` | `true` | Show shortcut badge in bar |
+| `placeholder` | `string` | `'Ask AI...'` | Input placeholder |
+| `icon` | `ReactNode` | Sparkles icon | Custom icon for idle state |
+| `width` | `number \| string` | `400` | Bar width |
+| `maxWidth` | `number \| string` | `'100%'` | Maximum width |
+| `zIndex` | `number` | `9999` | Z-index |
+| `showResultCard` | `boolean` | `true` | Show result card on completion |
+| `resultCardMaxHeight` | `number \| string` | `300` | Max height for result card |
+| `processingMessage` | `string` | `'Processing...'` | Fallback message during processing |
+| `color` | `string` | `'#3b82f6'` | Primary color |
+| `backgroundColor` | `string` | `'#ffffff'` | Background color |
+| `textColor` | `string` | `'#1f2937'` | Text color |
+| `borderColor` | `string` | `'#e5e7eb'` | Border color |
+| `borderRadius` | `number \| string` | `12` | Border radius |
+| `fontFamily` | `string` | System fonts | Font family |
+| `fontSize` | `number \| string` | `14` | Font size |
+| `padding` | `number \| string` | `'12px 16px'` | Bar padding |
+| `boxShadow` | `string` | Light shadow | Box shadow |
+| `animationDuration` | `number` | `200` | Animation duration (ms) |
+| `toolRenderers` | `Record<string, (input, output) => ReactNode>` | — | Custom tool renderers |
+| `toolIcons` | `Record<string, ReactNode>` | — | Custom tool icons |
+| `enableHistory` | `boolean` | `true` | Enable command history |
+| `maxHistoryItems` | `number` | `50` | Max history items to store |
+| `historyStorageKey` | `string` | `'devic-command-bar-history'` | localStorage key |
+| `commands` | `AICommandBarCommand[]` | — | Slash commands |
+| `showHistoryCommand` | `boolean` | `true` | Add built-in /history command |
+
+## AICommandBarHandle Reference
+
+Methods exposed via ref:
+
+| Method | Description |
+|--------|-------------|
+| `open()` | Open the command bar |
+| `close()` | Close the command bar |
+| `toggle()` | Toggle visibility |
+| `focus()` | Focus the input |
+| `submit(message?: string)` | Submit a message |
+| `reset()` | Reset state (clear input, result, errors) |
 
 ## Troubleshooting
 
