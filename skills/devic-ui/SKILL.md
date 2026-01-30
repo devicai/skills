@@ -606,6 +606,13 @@ import type {
   CommandBarResult,
   ToolCallSummary,
 
+  // AIGenerationButton types
+  AIGenerationButtonProps,
+  AIGenerationButtonOptions,
+  AIGenerationButtonHandle,
+  AIGenerationButtonMode,
+  GenerationResult,
+
   // Tool types
   ModelInterfaceTool,
   ModelInterfaceToolSchema,
@@ -636,6 +643,11 @@ const commandBarOptions: AICommandBarOptions = {
   placeholder: 'Ask AI...',
 };
 
+const generationOptions: AIGenerationButtonOptions = {
+  mode: 'modal',
+  modalTitle: 'Generate with AI',
+};
+
 const handleMessage = (message: ChatMessage) => {
   console.log(message.content.message);
 };
@@ -644,6 +656,10 @@ const handleCommandResult = (result: CommandBarResult) => {
   console.log('Chat UID:', result.chatUid);
   console.log('Tool calls:', result.toolCalls.length);
   console.log('Response:', result.message.content);
+};
+
+const handleGenerationResult = (result: GenerationResult) => {
+  console.log('Generated content:', result.message.content.message);
 };
 ```
 
@@ -1135,6 +1151,307 @@ Methods exposed via ref:
 | `focus()` | Focus the input |
 | `submit(message?: string)` | Submit a message |
 | `reset()` | Reset state (clear input, result, errors) |
+
+## AIGenerationButton Component
+
+A button component for triggering AI generation with three configurable interaction modes. Useful for "Generate with AI" buttons in forms, editors, and other UI contexts.
+
+### Basic Usage
+
+```tsx
+import { AIGenerationButton } from '@devicai/ui';
+
+function App() {
+  return (
+    <AIGenerationButton
+      assistantId="my-assistant"
+      options={{
+        mode: 'modal',
+        modalTitle: 'Generate Content',
+        placeholder: 'Describe what you want to generate...',
+      }}
+      onResponse={({ message }) => {
+        console.log('Generated:', message.content.message);
+      }}
+    />
+  );
+}
+```
+
+### Interaction Modes
+
+#### Direct Mode
+
+Sends a predefined prompt immediately when clicked. Best for specific, predetermined actions.
+
+```tsx
+<AIGenerationButton
+  assistantId="my-assistant"
+  options={{
+    mode: 'direct',
+    prompt: 'Generate a product description based on the form data',
+    label: 'Auto-Generate Description',
+    loadingLabel: 'Generating...',
+  }}
+  onBeforeSend={(prompt) => {
+    // Optionally modify the prompt before sending
+    return `${prompt}\n\nProduct: ${productName}`;
+  }}
+  onResponse={({ message }) => setDescription(message.content.message)}
+/>
+```
+
+#### Modal Mode (Default)
+
+Opens a modal dialog for the user to enter a custom prompt.
+
+```tsx
+<AIGenerationButton
+  assistantId="my-assistant"
+  options={{
+    mode: 'modal',
+    modalTitle: 'Generate with AI',
+    modalDescription: 'Describe what you want and the AI will generate it for you.',
+    placeholder: 'E.g., Create a function that validates email addresses...',
+    confirmText: 'Generate',
+    cancelText: 'Cancel',
+  }}
+  onResponse={({ message }) => {
+    // Handle the generated content
+    setCode(message.content.message);
+  }}
+/>
+```
+
+#### Tooltip Mode
+
+Shows a compact inline input next to the button. Good for quick prompts without modal interruption.
+
+```tsx
+<AIGenerationButton
+  assistantId="my-assistant"
+  options={{
+    mode: 'tooltip',
+    tooltipPlacement: 'bottom', // 'top' | 'bottom' | 'left' | 'right'
+    tooltipWidth: 350,
+    placeholder: 'What should I generate?',
+  }}
+  onResponse={handleGeneration}
+/>
+```
+
+### Button Styling
+
+```tsx
+<AIGenerationButton
+  assistantId="my-assistant"
+  options={{
+    // Button variant
+    variant: 'primary', // 'primary' | 'secondary' | 'outline' | 'ghost'
+
+    // Button size
+    size: 'medium', // 'small' | 'medium' | 'large'
+
+    // Label and icon
+    label: 'Generate with AI',
+    hideLabel: false, // Set true for icon-only button
+    icon: <CustomSparkleIcon />, // Custom icon
+    hideIcon: false,
+
+    // Loading state
+    loadingLabel: 'Generating...',
+  }}
+/>
+```
+
+### Theming
+
+```tsx
+<AIGenerationButton
+  assistantId="my-assistant"
+  options={{
+    color: '#6366f1',           // Primary color
+    backgroundColor: '#ffffff',  // Button background (for secondary/outline variants)
+    textColor: '#1f2937',        // Text color
+    borderColor: '#e5e7eb',      // Border color
+    borderRadius: 8,             // Border radius
+    fontFamily: 'Inter, sans-serif',
+    fontSize: 14,
+    zIndex: 10000,               // Z-index for modal/tooltip
+    animationDuration: 200,      // Animation duration in ms
+  }}
+/>
+```
+
+### Custom Button Content
+
+Use `children` to completely customize the button appearance:
+
+```tsx
+<AIGenerationButton
+  assistantId="my-assistant"
+  options={{ mode: 'modal' }}
+  onResponse={handleResponse}
+>
+  <span className="my-custom-button">
+    <SparkleIcon /> Generate Code
+  </span>
+</AIGenerationButton>
+```
+
+### Programmatic Control
+
+Use ref to control the component programmatically:
+
+```tsx
+import { useRef } from 'react';
+import { AIGenerationButton, AIGenerationButtonHandle } from '@devicai/ui';
+
+function Editor() {
+  const buttonRef = useRef<AIGenerationButtonHandle>(null);
+
+  const handleKeyboardShortcut = (e: KeyboardEvent) => {
+    if (e.metaKey && e.key === 'g') {
+      buttonRef.current?.open(); // Open modal/tooltip
+    }
+  };
+
+  const generateDirectly = async () => {
+    const result = await buttonRef.current?.generate('Generate a summary');
+    if (result) {
+      console.log('Generated:', result.message.content.message);
+    }
+  };
+
+  return (
+    <AIGenerationButton
+      ref={buttonRef}
+      assistantId="my-assistant"
+      options={{ mode: 'modal' }}
+      onResponse={handleResponse}
+    />
+  );
+}
+```
+
+### Using the Hook Directly
+
+For completely custom UI implementations:
+
+```tsx
+import { useAIGenerationButton } from '@devicai/ui';
+
+function CustomGenerateButton() {
+  const {
+    isOpen,
+    isProcessing,
+    inputValue,
+    setInputValue,
+    error,
+    result,
+    inputRef,
+    open,
+    close,
+    generate,
+    reset,
+    handleKeyDown,
+  } = useAIGenerationButton({
+    assistantId: 'my-assistant',
+    onResponse: (result) => console.log('Generated:', result),
+    onError: (error) => console.error('Error:', error),
+  });
+
+  return (
+    <div>
+      <button onClick={() => open()}>
+        {isProcessing ? 'Generating...' : 'Generate'}
+      </button>
+
+      {isOpen && (
+        <div className="custom-modal">
+          <textarea
+            ref={inputRef}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Describe what to generate..."
+          />
+          <button onClick={() => generate()} disabled={isProcessing}>
+            {isProcessing ? 'Working...' : 'Generate'}
+          </button>
+          <button onClick={close}>Cancel</button>
+          {error && <p className="error">{error.message}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## AIGenerationButton Props Reference
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `assistantId` | `string` | *required* | Assistant identifier |
+| `apiKey` | `string` | — | API key (overrides provider) |
+| `baseUrl` | `string` | — | Base URL (overrides provider) |
+| `tenantId` | `string` | — | Tenant ID (overrides provider) |
+| `tenantMetadata` | `Record<string, any>` | — | Tenant metadata |
+| `options` | `AIGenerationButtonOptions` | — | Display and behavior options |
+| `modelInterfaceTools` | `ModelInterfaceTool[]` | — | Client-side tools |
+| `onResponse` | `(result: GenerationResult) => void` | — | Fires on successful generation |
+| `onBeforeSend` | `(prompt: string) => string \| undefined` | — | Modify prompt before sending |
+| `onError` | `(error: Error) => void` | — | Fires on error |
+| `onStart` | `() => void` | — | Fires when processing starts |
+| `onOpen` | `() => void` | — | Fires when modal/tooltip opens |
+| `onClose` | `() => void` | — | Fires when modal/tooltip closes |
+| `disabled` | `boolean` | `false` | Disable the button |
+| `className` | `string` | — | Additional CSS class for button |
+| `containerClassName` | `string` | — | CSS class for container |
+| `children` | `ReactNode` | — | Custom button content |
+| `theme` | `FeedbackTheme` | — | Theme for modal/tooltip |
+
+## AIGenerationButtonOptions Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `mode` | `'direct' \| 'modal' \| 'tooltip'` | `'modal'` | Interaction mode |
+| `prompt` | `string` | — | Predefined prompt (required for direct mode) |
+| `placeholder` | `string` | `'Describe what you want to generate...'` | Input placeholder |
+| `modalTitle` | `string` | `'Generate with AI'` | Modal title |
+| `modalDescription` | `string` | — | Modal description text |
+| `confirmText` | `string` | `'Generate'` | Confirm button text |
+| `cancelText` | `string` | `'Cancel'` | Cancel button text |
+| `tooltipPlacement` | `'top' \| 'bottom' \| 'left' \| 'right'` | `'top'` | Tooltip position |
+| `tooltipWidth` | `number \| string` | `300` | Tooltip width |
+| `variant` | `'primary' \| 'secondary' \| 'ghost' \| 'outline'` | `'primary'` | Button variant |
+| `size` | `'small' \| 'medium' \| 'large'` | `'medium'` | Button size |
+| `icon` | `ReactNode` | Sparkles icon | Custom button icon |
+| `hideIcon` | `boolean` | `false` | Hide button icon |
+| `label` | `string` | `'Generate with AI'` | Button label |
+| `hideLabel` | `boolean` | `false` | Hide button label (icon-only) |
+| `loadingLabel` | `string` | `'Generating...'` | Label during processing |
+| `color` | `string` | `'#3b82f6'` | Primary color |
+| `backgroundColor` | `string` | — | Background color |
+| `textColor` | `string` | — | Text color |
+| `borderColor` | `string` | — | Border color |
+| `borderRadius` | `number \| string` | `8` | Border radius |
+| `fontFamily` | `string` | System fonts | Font family |
+| `fontSize` | `number \| string` | `14` | Font size |
+| `zIndex` | `number` | `10000` | Z-index for overlays |
+| `animationDuration` | `number` | `200` | Animation duration (ms) |
+
+## AIGenerationButtonHandle Reference
+
+Methods exposed via ref:
+
+| Method | Description |
+|--------|-------------|
+| `generate(prompt?: string)` | Trigger generation (returns Promise with result) |
+| `open()` | Open modal/tooltip (for modal and tooltip modes) |
+| `close()` | Close modal/tooltip |
+| `reset()` | Reset component state |
+| `isProcessing` | Boolean indicating if processing |
 
 ## Troubleshooting
 
