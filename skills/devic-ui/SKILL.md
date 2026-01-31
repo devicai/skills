@@ -660,6 +660,7 @@ const handleCommandResult = (result: CommandBarResult) => {
 
 const handleGenerationResult = (result: GenerationResult) => {
   console.log('Generated content:', result.message.content.message);
+  console.log('Tool calls executed:', result.toolCalls);
 };
 ```
 
@@ -1440,6 +1441,9 @@ function CustomGenerateButton() {
 | `fontSize` | `number \| string` | `14` | Font size |
 | `zIndex` | `number` | `10000` | Z-index for overlays |
 | `animationDuration` | `number` | `200` | Animation duration (ms) |
+| `toolRenderers` | `Record<string, (input, output) => ReactNode>` | — | Custom tool call renderers by tool name |
+| `toolIcons` | `Record<string, ReactNode>` | — | Custom tool icons by tool name |
+| `processingMessage` | `string` | `'Processing...'` | Message shown during processing |
 
 ## AIGenerationButtonHandle Reference
 
