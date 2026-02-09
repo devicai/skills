@@ -34,6 +34,7 @@ Assistant Specializations define how an assistant behaves, what tools it can use
 | `model` | string | Default LLM model |
 | `provider` | string | Default LLM provider |
 | `memoryDocuments` | object[] | Persistent context documents |
+| `subagentsIds` | string[] | Agent IDs this assistant can invoke as subagents during chat |
 | `accessConfiguration` | object | Visibility and external access settings |
 
 ### Tool Access
@@ -60,6 +61,61 @@ Controls visibility and external API access:
 
 - `externalAccess: true` - Makes the assistant available via the public API
 - `visibilityByRole` - Controls which user roles can see/use the assistant in the dashboard
+
+### Subagent Handoff
+
+Assistants configured with `subagentsIds` can delegate work to agents (subagents) during a chat conversation. When a subagent handoff occurs, the chat is paused until the subagent completes, then the assistant resumes and produces the final response.
+
+#### How It Works
+
+1. A user sends a message to an assistant that has `subagentsIds` configured
+2. During processing, the model invokes the `hand_off_subagent` tool to delegate to a subagent
+3. A **subthread** is created for the subagent, linked back to the chat via `parentChatUID`
+4. The ChatHistory is saved with `handedOff: true` — the chat is now paused
+5. The subagent executes independently in its own thread
+6. When the subagent calls `finish_execution`, the result is appended to the chat as a tool response
+7. The assistant resumes processing and generates the final response
+8. The ChatHistory is updated with `handedOff: false` and the complete conversation
+
+#### ChatHistory Subagent Properties
+
+The following properties on the ChatHistory object track the subagent handoff state:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `handedOff` | boolean | `true` when the chat is paused waiting for a subagent to complete. `false` (or absent) otherwise |
+| `handedOffSubThreadId` | string | The ID of the subagent thread currently executing. Only present when `handedOff` is `true` |
+| `handedOffToolCallId` | string | The tool call ID in the chat that triggered the handoff. Used to match the subagent response back to the correct tool call |
+
+#### Chat States During Subagent Handoff
+
+The chat transitions through these states during a subagent handoff:
+
+| State | `handedOff` | Realtime Status | Description |
+|-------|-------------|-----------------|-------------|
+| Normal processing | `false` | `processing` | Assistant is actively generating a response |
+| Handed off | `true` | `processing` | Chat is paused, subagent is executing in its own thread |
+| Subagent completed | `false` | `processing` | Subagent finished, assistant is resuming to generate final response |
+| Completed | `false` | `completed` | Assistant produced the final response incorporating the subagent result |
+| Subagent failed | `false` | `completed` | Subagent failed, assistant received the error as tool response and generated a response explaining the failure |
+
+#### Blocking Behavior
+
+While a chat is in `handedOff: true` state, sending new messages to that chat will return an error:
+
+```json
+{
+  "success": false,
+  "error": "CHAT_HANDED_OFF",
+  "message": "Chat is waiting for subagent completion"
+}
+```
+
+The user must wait for the subagent to finish before continuing the conversation.
+
+#### Subthread Link
+
+The subagent thread (AgentThread) created during handoff has a `parentChatUID` field that references back to the chat's `chatUID`. This is how the system knows to resume the chat when the subagent finishes, as opposed to a `parentThreadId` which links subthreads to parent agent threads.
 
 ---
 

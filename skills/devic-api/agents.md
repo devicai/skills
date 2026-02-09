@@ -73,6 +73,31 @@ Threads can be in one of the following states:
 | `COMPLETED` | Thread finished successfully |
 | `FAILED` | Thread encountered an error |
 | `CANCELLED` | Thread was cancelled |
+| `HANDED_OFF` | Thread is waiting for one or more subagent threads to complete |
+| `TERMINATED` | Thread was terminated by the user |
+
+---
+
+## Subagent Handoff
+
+Agents can delegate work to other agents (subagents) during execution via the `hand_off_subagent` tool. This creates a parent-child relationship between threads.
+
+### How It Works
+
+1. An agent configured with `subagentsIds` in its `assistantSpecialization` can invoke the `hand_off_subagent` tool during execution
+2. A **subthread** is created for the target subagent, linked to the parent thread
+3. The parent thread transitions to `HANDED_OFF` state
+4. The subagent executes independently in its own thread
+5. When the subagent calls `finish_execution`, the result is appended to the parent thread as a tool response
+6. If all pending subthreads have completed, the parent thread transitions back to `QUEUED` and resumes execution
+
+### Parallel Subagent Handoffs
+
+An agent can hand off to **multiple subagents in parallel**. The parent thread tracks all pending subthreads via `pendingHandOffSubThreadIds` and only resumes once every subthread has completed (or been terminated).
+
+### Subthread Termination
+
+If a user terminates a subthread (via the Complete endpoint with state `TERMINATED`), the parent thread is automatically notified with a tool response containing `"Terminated by the user"`, and the subthread is removed from the pending list.
 
 ---
 
@@ -94,6 +119,7 @@ Agents are configured through an embedded `assistantSpecialization` object that 
 | `maxExecutionInputTokens` | number | Token limit per execution |
 | `maxExecutionToolCalls` | number | Max tool calls per execution |
 | `evaluationConfig` | object | Evaluation settings |
+| `subAgentConfig` | object | Configuration for when this agent acts as a subagent (see below) |
 
 ### assistantSpecialization Object
 
@@ -111,6 +137,18 @@ The `assistantSpecialization` defines the agent's behavior, tools, and capabilit
 | `memoryDocuments` | object[] | Persistent context documents |
 | `codeSnippetIds` | string[] | Code snippets available to the agent |
 | `subagentsIds` | string[] | Other agents this agent can invoke |
+
+### subAgentConfig Object
+
+Configures how an agent behaves when invoked as a subagent by another agent.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `enabled` | boolean | Whether this agent can be invoked as a subagent |
+| `inputFormat` | string | Input format: `"text"` or `"json"` |
+| `inputStructure` | object | JSON Schema defining the expected input structure (when `inputFormat` is `"json"`) |
+| `outputFormat` | string | Output format: `"text"` or `"json"` |
+| `outputStructure` | object | JSON Schema defining the expected output structure (when `outputFormat` is `"json"`) |
 
 ### Tool Access
 
@@ -257,6 +295,7 @@ POST /api/v1/agents
 | `concurrentExecutionLimit` | number | No | Max concurrent executions |
 | `agentNotificationConfig` | object | No | Notification settings |
 | `evaluationConfig` | object | No | Evaluation settings |
+| `subAgentConfig` | object | No | Configuration for subagent behavior (see subAgentConfig Object) |
 
 ### assistantSpecialization Object
 
@@ -342,6 +381,7 @@ All fields are optional. Only provided fields will be updated.
 | `maxExecutionInputTokens` | number | Max input tokens |
 | `maxExecutionToolCalls` | number | Max tool calls |
 | `evaluationConfig` | object | Evaluation settings |
+| `subAgentConfig` | object | Configuration for subagent behavior (see subAgentConfig Object) |
 
 ### Example Request
 
@@ -542,9 +582,31 @@ GET /api/v1/agents/threads/:threadId
         "status": "in_progress"
       }
     ],
-    "tasks": [...]
+    "tasks": [...],
+    "isSubthread": false,
+    "pendingHandOffSubThreadIds": [],
+    "handOffSubThreadIds": []
   }
 }
+```
+
+### Subthread Properties
+
+When a thread is a subthread (created via subagent handoff), the following additional properties are present:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `isSubthread` | boolean | Whether this thread is a subthread created by a parent handoff |
+| `parentThreadId` | string | ID of the parent thread (if this is a subthread) |
+| `parentAgentId` | string | ID of the parent agent (if this is a subthread) |
+| `subThreadToolCallId` | string | Tool call ID in the parent thread that triggered this subthread |
+
+For parent threads that have handed off to subagents:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `pendingHandOffSubThreadIds` | string[] | IDs of subthreads still executing |
+| `handOffSubThreadIds` | string[] | All subthread IDs ever created during handoffs |
 ```
 
 ---
@@ -618,7 +680,7 @@ POST /api/v1/agents/threads/:threadId/complete
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `state` | string | Yes | Final state (`COMPLETED`, `FAILED`, `CANCELLED`) |
+| `state` | string | Yes | Final state (`COMPLETED`, `FAILED`, `CANCELLED`, `TERMINATED`) |
 
 ---
 

@@ -99,12 +99,18 @@ Understanding how the core entities relate to each other is essential for buildi
 │     Assistant        │     │            Agent                  │
 │  (Chat interface)    │     │  (Autonomous execution threads)   │
 └──────────────────────┘     └──────────────────────────────────┘
-         │                              │
-         ▼                              ▼
-┌──────────────────────┐     ┌──────────────────────────────────┐
+         │                              │           │
+         ▼                              ▼           │ hand_off_subagent
+┌──────────────────────┐     ┌──────────────────────┴───────────┐
 │   Chat Histories     │     │          Threads                  │
 │  (Conversations)     │     │  (Execution sessions with tasks)  │
-└──────────────────────┘     └──────────────────────────────────┘
+└──────────────────────┘     │                                   │
+                              │  ┌─────────────────────────────┐ │
+                              │  │  Subthreads                  │ │
+                              │  │  (Child executions from      │ │
+                              │  │   subagent handoffs)         │ │
+                              │  └─────────────────────────────┘ │
+                              └──────────────────────────────────┘
 ```
 
 ### Key Concepts
