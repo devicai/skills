@@ -553,6 +553,11 @@ const checkResponse = async () => {
     return result.chatHistory;
   } else if (result.status === 'error') {
     throw new Error('Processing failed');
+  } else if (result.status === 'handed_off') {
+    // Assistant delegated to a subagent
+    // result.handedOffSubThreadId contains the subthread ID
+    console.log('Handed off to subthread:', result.handedOffSubThreadId);
+    // Continue polling until the handoff completes and processing resumes
   }
 
   // Continue polling
@@ -622,7 +627,8 @@ import type {
   UseDevicChatResult,
 
   // API types
-  RealtimeChatHistory,
+  RealtimeChatHistory,  // Includes status (with 'handed_off') and handedOffSubThreadId
+  RealtimeStatus,       // 'processing' | 'completed' | 'error' | 'waiting_for_tool_response' | 'handed_off'
   AssistantSpecialization,
 
   // Feedback types
@@ -1477,10 +1483,12 @@ The library supports assistant-to-subagent handoff, where an assistant delegates
 ### How It Works
 
 1. The assistant calls a `hand_off_subagent` tool, which creates a subthread on the backend
-2. `useDevicChat` detects the handoff and sets `handedOff: true`
-3. ChatInput is disabled with a "Waiting for subagent to complete" notice
-4. A `HandoffSubagentWidget` renders inline in the tool timeline, polling the subthread for status
-5. When the subthread reaches a terminal state (completed, failed, terminated), the chat reloads the full conversation
+2. The realtime polling response status changes to `handed_off` with a `handedOffSubThreadId` field
+3. `useDevicChat` detects the `handed_off` status, stops main polling, and sets `handedOff: true` with the subthread ID
+4. ChatInput is disabled with a "Waiting for subagent to complete" notice
+5. A `HandoffSubagentWidget` renders inline in the tool timeline, polling the subthread every 5s for status, tasks progress, and summary
+6. A background handoff poll checks the realtime endpoint every 5s to detect when the parent thread is no longer in `handed_off` state
+7. When the subthread reaches a terminal state (completed, failed, terminated), the widget calls `onHandoffCompleted` which clears handoff state and resumes main polling to pick up the parent thread's continuation
 
 ### Automatic Handoff in ChatDrawer
 
@@ -1577,9 +1585,10 @@ function CustomChat() {
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `handedOff` | `boolean` | Whether the assistant has handed off to a subagent |
-| `handedOffSubThreadId` | `string \| null` | The active subthread ID |
-| `onHandoffCompleted` | `() => void` | Callback that triggers chat reload when subagent finishes |
+| `handedOff` | `boolean` | Whether the assistant has handed off to a subagent (set when realtime status is `handed_off`) |
+| `handedOffSubThreadId` | `string \| null` | The active subthread ID (from `RealtimeChatHistory.handedOffSubThreadId`) |
+| `onHandoffCompleted` | `() => void` | Callback that clears handoff state and resumes main polling when subagent finishes |
+| `status` | `RealtimeStatus \| 'idle'` | Current status — includes `'handed_off'` when a handoff is active |
 
 ## ThreadStateTag Component
 
@@ -1730,6 +1739,8 @@ const messages = await client.getChatHistoryContent('assistant-id', 'chat-uid');
 1. Ensure the assistant is configured with a `hand_off_subagent` tool on the backend
 2. The widget renders inside the tool timeline — verify `showToolTimeline` is not set to `false`
 3. Check that the API key has permission to access agent thread endpoints
+4. Verify the realtime response returns `status: 'handed_off'` with `handedOffSubThreadId` — the handoff detection relies on this
+5. Check console for `[useDevicChat] Handoff state set:` logs to confirm the subthread ID is being received
 
 ### File uploads not working
 
