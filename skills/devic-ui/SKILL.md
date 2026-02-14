@@ -373,6 +373,53 @@ Replace the default tool call summary with custom UI per tool name:
 />
 ```
 
+### Tool Groups (Grouped Tool Call Rendering)
+
+Group consecutive tool calls into a single unified renderer. Useful for rendering sequences of related tool calls (e.g., terminal commands + file reads) as a cohesive UI block.
+
+```tsx
+import { ChatDrawer, ToolGroupCall, ToolGroupConfig } from '@devicai/ui';
+
+const toolGroups: ToolGroupConfig[] = [
+  {
+    tools: ['run_terminal_command', 'read_sandbox_file'],
+    renderer: (calls: ToolGroupCall[]) => (
+      <div className="terminal-trace">
+        {calls.map((call) => (
+          <div key={call.toolCallId} className="trace-entry">
+            <code>{call.name}</code>
+            <pre>{JSON.stringify(call.input, null, 2)}</pre>
+            {call.output && <pre className="output">{JSON.stringify(call.output)}</pre>}
+          </div>
+        ))}
+      </div>
+    ),
+  },
+];
+
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    toolGroups,
+    // toolRenderers still works for non-grouped tools
+    toolRenderers: {
+      search_web: (input, output) => <SearchResult query={input.query} results={output} />,
+    },
+  }}
+/>
+```
+
+Tool groups work in all three components: `ChatDrawer`, `AICommandBar`, and `AIGenerationButton`. When consecutive tool calls match the same group's `tools` array, they are accumulated and passed as a single array to the group's `renderer`. Non-matching tools render individually as before (using `toolRenderers` or default rendering).
+
+The `segmentToolCalls` utility is also exported for custom implementations:
+
+```tsx
+import { segmentToolCalls, ToolGroupCall, ToolGroupConfig } from '@devicai/ui';
+
+const segments = segmentToolCalls(calls, toolGroups);
+// Returns: Array<{ type: 'group', config, calls } | { type: 'single', call, index }>
+```
+
 ## Theming
 
 ### Using Props
@@ -621,6 +668,8 @@ import type {
   // Tool types
   ModelInterfaceTool,
   ModelInterfaceToolSchema,
+  ToolGroupCall,
+  ToolGroupConfig,
 
   // Hook types
   UseDevicChatOptions,
@@ -647,7 +696,7 @@ import type {
 } from '@devicai/ui';
 
 // Import the AgentThreadState enum (value export)
-import { AgentThreadState } from '@devicai/ui';
+import { AgentThreadState, segmentToolCalls } from '@devicai/ui';
 
 // Use types in your code
 const chatOptions: ChatDrawerOptions = {
@@ -746,6 +795,7 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `toolIcons` | `Record<string, ReactNode>` | — | Custom tool call icons by tool name |
 | `showFeedback` | `boolean` | `true` | Show thumbs up/down feedback buttons on assistant messages |
 | `handoffWidgetRenderer` | `(props: { thread, agent, elapsedSeconds, isTerminal }) => ReactNode` | — | Custom renderer for the HandoffSubagentWidget (replaces default UI) |
+| `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
 
 ## Message Feedback
 
@@ -1158,6 +1208,7 @@ function CustomCommandBar() {
 | `historyStorageKey` | `string` | `'devic-command-bar-history'` | localStorage key |
 | `commands` | `AICommandBarCommand[]` | — | Slash commands |
 | `showHistoryCommand` | `boolean` | `true` | Add built-in /history command |
+| `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
 
 ## AICommandBarHandle Reference
 
@@ -1463,6 +1514,7 @@ function CustomGenerateButton() {
 | `toolRenderers` | `Record<string, (input, output) => ReactNode>` | — | Custom tool call renderers by tool name |
 | `toolIcons` | `Record<string, ReactNode>` | — | Custom tool icons by tool name |
 | `processingMessage` | `string` | `'Processing...'` | Message shown during processing |
+| `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
 
 ## AIGenerationButtonHandle Reference
 
