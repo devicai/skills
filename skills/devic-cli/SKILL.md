@@ -40,6 +40,7 @@ Environment variables override stored config:
 | Option | Description |
 |--------|-------------|
 | `-o, --output <format>` | Output format: `json` or `human`. Auto-detected: JSON when piped, human in TTY |
+| `--base-url <url>` | API base URL. Overrides config and env var. Priority: `--base-url` flag > `DEVIC_BASE_URL` env > config file > `https://api.devic.ai` |
 | `-V, --version` | Show version |
 | `-h, --help` | Show help |
 
