@@ -52,7 +52,23 @@ Environment variables override stored config:
 | 2 | Authentication required |
 | 3 | Poll timeout |
 
-Errors are always written to stderr as JSON: `{"error":"...","code":"..."}`.
+Errors are written to stderr. In JSON mode: `{"error":"...","code":"..."}`. In human mode: markdown-formatted error with bold label and inline code.
+
+## Human Output Format
+
+When using `-o human` (or in a TTY), all output is markdown-formatted:
+
+- **Lists**: Rendered as markdown tables with `| Header | ... |` format
+- **Details**: Properties with `**Bold Label:** value`, IDs in `` `inline code` ``
+- **Conversations**: Messages labeled `**USER:**` / `**ASSISTANT:**` / `**TOOL:**`
+- **Status indicators**: `[OK]` success, `[..]` in-progress, `[!!]` needs attention, `[XX]` failed
+- **Actions**: Success messages prefixed with `[OK]`
+- **Errors**: Written to stderr with `**Error:** message` format
+- **Pagination**: Footer with `**Total:** N | **Offset:** N | ...`
+- **Nested objects**: Rendered as fenced JSON code blocks
+- **Thread tasks**: Displayed as `[x]`/`[ ]` checklists
+
+This format is designed for both human reading and LLM/agent consumption.
 
 ## JSON Input
 
@@ -122,16 +138,24 @@ devic assistants chat <identifier> -m "message" [options]
 | `--no-wait` | Synchronous mode — blocks until response |
 | `--from-json <file>` | Read full ProcessMessageDto from file (- for stdin) |
 
-When `--wait` is active, outputs NDJSON status lines during polling:
+When `--wait` is active, status updates are emitted during polling:
 
-```jsonl
-{"type":"chat_status","chatUid":"...","status":"processing","timestamp":1234567890}
-{"type":"chat_status","chatUid":"...","status":"completed","timestamp":1234567891}
-```
+- **JSON mode** (`-o json`): NDJSON lines on stdout:
+  ```jsonl
+  {"type":"chat_status","chatUid":"...","status":"processing","timestamp":1234567890}
+  {"type":"chat_status","chatUid":"...","status":"completed","timestamp":1234567891}
+  ```
+- **Human mode** (`-o human`): Readable status lines on stderr:
+  ```
+  [..] Chat `550e8400...` — **processing**
+  [OK] Chat `550e8400...` — **completed**
+  ```
 
 Chat polling: 1s initial interval, 1.5x backoff, 10s max, 5min timeout.
 
 Status values: `processing`, `completed`, `error`, `waiting_for_tool_response`, `handed_off`.
+
+Status indicators: `[OK]` completed/active, `[..]` processing/queued, `[!!]` paused/waiting, `[XX]` failed/error.
 
 #### devic assistants stop
 
@@ -233,12 +257,18 @@ devic agents threads create <agentId> -m "task" [options]
 | `--wait` | Poll until terminal state |
 | `--from-json <file>` | Read thread config from file |
 
-When `--wait` is active, outputs NDJSON status lines:
+When `--wait` is active, status updates are emitted during polling:
 
-```jsonl
-{"type":"thread_status","threadId":"...","state":"processing","tasks":[...],"timestamp":1234567890}
-{"type":"thread_status","threadId":"...","state":"completed","tasks":[...],"timestamp":1234567891}
-```
+- **JSON mode** (`-o json`): NDJSON lines on stdout:
+  ```jsonl
+  {"type":"thread_status","threadId":"...","state":"processing","tasks":[...],"timestamp":1234567890}
+  {"type":"thread_status","threadId":"...","state":"completed","tasks":[...],"timestamp":1234567891}
+  ```
+- **Human mode** (`-o human`): Readable status lines on stderr:
+  ```
+  [..] Thread `thread-456` — **processing** (tasks: 1/3)
+  [OK] Thread `thread-456` — **completed** (tasks: 3/3)
+  ```
 
 Thread polling: 2s initial interval, 1.5x backoff, 15s max, 10min timeout.
 
