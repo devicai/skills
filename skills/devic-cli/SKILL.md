@@ -1,0 +1,583 @@
+---
+name: devic-cli
+description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, or building agent workflows that interact with assistants, agents, tool servers, and feedback."
+---
+
+# @devicai/cli
+
+CLI for the Devic AI Platform API. Agent-first — JSON output by default when piped, human-readable in terminal. Single runtime dependency (commander).
+
+## Installation
+
+```bash
+npm install -g @devicai/cli
+# or
+npx @devicai/cli <command>
+```
+
+## Authentication
+
+```bash
+# Login with API key (validates with a test request, stores in ~/.config/devic/config.json)
+devic auth login --api-key devic-xxx
+
+# Check auth status
+devic auth status
+
+# Logout (removes stored credentials)
+devic auth logout
+```
+
+Environment variables override stored config:
+
+| Variable | Description |
+|----------|-------------|
+| `DEVIC_API_KEY` | API key |
+| `DEVIC_BASE_URL` | API base URL (default: `https://api.devic.ai`) |
+
+## Global Options
+
+| Option | Description |
+|--------|-------------|
+| `-o, --output <format>` | Output format: `json` or `human`. Auto-detected: JSON when piped, human in TTY |
+| `-V, --version` | Show version |
+| `-h, --help` | Show help |
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Error |
+| 2 | Authentication required |
+| 3 | Poll timeout |
+
+Errors are always written to stderr as JSON: `{"error":"...","code":"..."}`.
+
+## JSON Input
+
+All create/update commands support `--from-json <file>` (or `-` for stdin) for complex payloads:
+
+```bash
+# From file
+devic agents create --from-json agent-config.json
+
+# From stdin
+echo '{"name":"My Agent"}' | devic agents create --from-json -
+```
+
+## Pagination
+
+All list commands support:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--offset <n>` | 0 | Items to skip |
+| `--limit <n>` | 10 | Max items (max 100) |
+
+---
+
+## Commands Reference
+
+### devic assistants
+
+Manage assistants and chat conversations.
+
+#### devic assistants list
+
+List all assistant specializations.
+
+```bash
+devic assistants list [--external] [--offset <n>] [--limit <n>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--external` | Only show externally accessible assistants |
+
+#### devic assistants get
+
+Get details of a specific assistant.
+
+```bash
+devic assistants get <identifier>
+```
+
+#### devic assistants chat
+
+Send a message to an assistant. Uses async mode with polling by default.
+
+```bash
+devic assistants chat <identifier> -m "message" [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-m, --message <text>` | **Required.** Message to send |
+| `--chat-uid <uid>` | Continue an existing conversation |
+| `--provider <provider>` | LLM provider override (openai, anthropic, azure, google) |
+| `--model <model>` | Model override |
+| `--tags <tags>` | Comma-separated tags |
+| `--wait` | Async mode + poll for result (default: true) |
+| `--no-wait` | Synchronous mode — blocks until response |
+| `--from-json <file>` | Read full ProcessMessageDto from file (- for stdin) |
+
+When `--wait` is active, outputs NDJSON status lines during polling:
+
+```jsonl
+{"type":"chat_status","chatUid":"...","status":"processing","timestamp":1234567890}
+{"type":"chat_status","chatUid":"...","status":"completed","timestamp":1234567891}
+```
+
+Chat polling: 1s initial interval, 1.5x backoff, 10s max, 5min timeout.
+
+Status values: `processing`, `completed`, `error`, `waiting_for_tool_response`, `handed_off`.
+
+#### devic assistants stop
+
+Stop an in-progress async chat.
+
+```bash
+devic assistants stop <identifier> <chatUid>
+```
+
+#### devic assistants chats list
+
+List chat histories for an assistant.
+
+```bash
+devic assistants chats list <identifier> [--omit-content] [--offset <n>] [--limit <n>]
+```
+
+#### devic assistants chats get
+
+Get a specific chat history.
+
+```bash
+devic assistants chats get <identifier> <chatUid>
+```
+
+#### devic assistants chats search
+
+Search chat histories across all assistants with filters.
+
+```bash
+devic assistants chats search [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--assistant <identifier>` | Filter by assistant |
+| `--tags <tags>` | Comma-separated tags |
+| `--start-date <date>` | Start date (ISO string) |
+| `--end-date <date>` | End date (ISO string) |
+| `--omit-content` | Exclude chat content |
+| `--from-json <file>` | Read filters from file |
+
+---
+
+### devic agents
+
+Manage agents, execution threads, and costs.
+
+#### devic agents list
+
+```bash
+devic agents list [--archived] [--offset <n>] [--limit <n>]
+```
+
+#### devic agents get
+
+```bash
+devic agents get <agentId>
+```
+
+#### devic agents create
+
+```bash
+devic agents create [--name <name>] [--description <desc>] [--from-json <file>]
+```
+
+The `--from-json` payload supports all agent fields: `name`, `description`, `assistantSpecialization` (with `presets`, `availableToolsGroupsUids`, `enabledTools`, `model`, `provider`, `subagentsIds`), `provider`, `llm`, `maxExecutionInputTokens`, `maxExecutionToolCalls`, `evaluationConfig`, `subAgentConfig`.
+
+#### devic agents update
+
+```bash
+devic agents update <agentId> [--name <name>] [--description <desc>] [--from-json <file>]
+```
+
+#### devic agents delete
+
+```bash
+devic agents delete <agentId>
+```
+
+---
+
+### devic agents threads
+
+Manage agent execution threads.
+
+#### devic agents threads create
+
+Create and optionally poll a new thread.
+
+```bash
+devic agents threads create <agentId> -m "task" [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-m, --message <text>` | **Required.** Initial message/task |
+| `--tags <tags>` | Comma-separated tags |
+| `--wait` | Poll until terminal state |
+| `--from-json <file>` | Read thread config from file |
+
+When `--wait` is active, outputs NDJSON status lines:
+
+```jsonl
+{"type":"thread_status","threadId":"...","state":"processing","tasks":[...],"timestamp":1234567890}
+{"type":"thread_status","threadId":"...","state":"completed","tasks":[...],"timestamp":1234567891}
+```
+
+Thread polling: 2s initial interval, 1.5x backoff, 15s max, 10min timeout.
+
+Terminal states: `completed`, `failed`, `terminated`.
+
+Actionable states (returned to caller): `paused_for_approval`.
+
+#### devic agents threads list
+
+```bash
+devic agents threads list <agentId> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--state <state>` | Filter by state |
+| `--start-date <date>` | Start date filter |
+| `--end-date <date>` | End date filter |
+| `--date-order <order>` | Sort: `asc` or `desc` |
+| `--tags <tags>` | Comma-separated tags |
+
+#### devic agents threads get
+
+```bash
+devic agents threads get <threadId> [--with-tasks]
+```
+
+#### devic agents threads approve
+
+```bash
+devic agents threads approve <threadId> [-m "message"]
+```
+
+#### devic agents threads reject
+
+```bash
+devic agents threads reject <threadId> [-m "message"]
+```
+
+#### devic agents threads pause
+
+```bash
+devic agents threads pause <threadId>
+```
+
+#### devic agents threads resume
+
+```bash
+devic agents threads resume <threadId>
+```
+
+#### devic agents threads complete
+
+Manually set a thread's final state.
+
+```bash
+devic agents threads complete <threadId> --state <COMPLETED|FAILED|CANCELLED|TERMINATED>
+```
+
+#### devic agents threads evaluate
+
+Trigger AI evaluation of a completed thread.
+
+```bash
+devic agents threads evaluate <threadId>
+```
+
+---
+
+### devic agents costs
+
+Track agent execution costs.
+
+#### devic agents costs daily
+
+```bash
+devic agents costs daily <agentId> [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]
+```
+
+#### devic agents costs monthly
+
+```bash
+devic agents costs monthly <agentId> [--start-month YYYY-MM] [--end-month YYYY-MM]
+```
+
+#### devic agents costs summary
+
+Get today's and current month's cost summary.
+
+```bash
+devic agents costs summary <agentId>
+```
+
+---
+
+### devic tool-servers
+
+Manage tool servers, their definitions, and individual tools.
+
+#### devic tool-servers list
+
+```bash
+devic tool-servers list [--offset <n>] [--limit <n>]
+```
+
+#### devic tool-servers get
+
+```bash
+devic tool-servers get <toolServerId>
+```
+
+#### devic tool-servers create
+
+```bash
+devic tool-servers create [--name <name>] [--url <url>] [--description <desc>] [--from-json <file>]
+```
+
+The `--from-json` payload supports: `name`, `description`, `url`, `identifier`, `enabled`, `mcpType`, `toolDefinitions`, `authenticationConfig`, `imageUrl`.
+
+#### devic tool-servers update
+
+```bash
+devic tool-servers update <toolServerId> [--name <name>] [--url <url>] [--description <desc>] [--enabled <bool>] [--from-json <file>]
+```
+
+#### devic tool-servers delete
+
+```bash
+devic tool-servers delete <toolServerId>
+```
+
+#### devic tool-servers clone
+
+```bash
+devic tool-servers clone <toolServerId>
+```
+
+#### devic tool-servers definition
+
+Get the full tool server definition.
+
+```bash
+devic tool-servers definition <toolServerId>
+```
+
+#### devic tool-servers update-definition
+
+```bash
+devic tool-servers update-definition <toolServerId> --from-json <file>
+```
+
+---
+
+### devic tool-servers tools
+
+Manage individual tools within a tool server.
+
+#### devic tool-servers tools list
+
+```bash
+devic tool-servers tools list <toolServerId>
+```
+
+#### devic tool-servers tools get
+
+```bash
+devic tool-servers tools get <toolServerId> <toolName>
+```
+
+#### devic tool-servers tools add
+
+```bash
+devic tool-servers tools add <toolServerId> --from-json <file>
+```
+
+JSON structure:
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "tool_name",
+    "description": "What it does",
+    "parameters": {
+      "type": "object",
+      "properties": { "param": { "type": "string" } },
+      "required": ["param"]
+    }
+  },
+  "endpoint": "/api/path/${param}",
+  "method": "GET",
+  "pathParametersKeys": ["param"]
+}
+```
+
+#### devic tool-servers tools update
+
+```bash
+devic tool-servers tools update <toolServerId> <toolName> --from-json <file>
+```
+
+#### devic tool-servers tools delete
+
+```bash
+devic tool-servers tools delete <toolServerId> <toolName>
+```
+
+#### devic tool-servers tools test
+
+Test a tool call with parameters.
+
+```bash
+devic tool-servers tools test <toolServerId> <toolName> --from-json <file>
+```
+
+The JSON file should contain the parameters object: `{"city": "London"}`.
+
+---
+
+### devic feedback
+
+Submit and view feedback on chat messages and thread messages.
+
+#### devic feedback submit-chat
+
+```bash
+devic feedback submit-chat <identifier> <chatUid> --message-id <id> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--message-id <id>` | **Required.** Message UID to give feedback on |
+| `--positive` | Positive feedback (thumbs up) |
+| `--negative` | Negative feedback (thumbs down) |
+| `--comment <text>` | Feedback comment |
+| `--from-json <file>` | Read full feedback payload from file |
+
+#### devic feedback list-chat
+
+```bash
+devic feedback list-chat <identifier> <chatUid>
+```
+
+#### devic feedback submit-thread
+
+```bash
+devic feedback submit-thread <threadId> --message-id <id> [options]
+```
+
+Same options as `submit-chat`.
+
+#### devic feedback list-thread
+
+```bash
+devic feedback list-thread <threadId>
+```
+
+---
+
+## Usage Examples
+
+### Send a message and get the result
+
+```bash
+# Simple chat
+devic assistants chat default -m "What is the capital of France?"
+
+# Continue a conversation
+CHAT_UID=$(devic assistants chat default -m "Hello" -o json | jq -r '.chatUID')
+devic assistants chat default -m "Tell me more" --chat-uid "$CHAT_UID"
+```
+
+### Create an agent and run a thread
+
+```bash
+# Create agent from JSON
+cat <<'EOF' | devic agents create --from-json -
+{
+  "name": "Data Analyst",
+  "description": "Analyzes data and creates reports",
+  "assistantSpecialization": {
+    "presets": "You are a data analyst. Analyze data and provide insights.",
+    "model": "gpt-4o"
+  }
+}
+EOF
+
+# Run a thread and wait for completion
+devic agents threads create <agentId> -m "Analyze Q4 sales data" --wait
+```
+
+### Handle thread approvals in a script
+
+```bash
+# Create thread
+RESULT=$(devic agents threads create <agentId> -m "Delete old records" --wait -o json)
+STATE=$(echo "$RESULT" | jq -r '.state')
+
+if [ "$STATE" = "paused_for_approval" ]; then
+  THREAD_ID=$(echo "$RESULT" | jq -r '._id')
+  devic agents threads approve "$THREAD_ID" -m "Approved"
+fi
+```
+
+### Set up a tool server with tools
+
+```bash
+# Create tool server
+cat <<'EOF' | devic tool-servers create --from-json -
+{
+  "name": "Weather API",
+  "url": "https://api.weather.example.com",
+  "toolDefinitions": [{
+    "type": "function",
+    "function": {
+      "name": "get_weather",
+      "description": "Get weather for a city",
+      "parameters": {
+        "type": "object",
+        "properties": { "city": { "type": "string" } },
+        "required": ["city"]
+      }
+    },
+    "endpoint": "/weather/${city}",
+    "method": "GET",
+    "pathParametersKeys": ["city"]
+  }]
+}
+EOF
+
+# Test the tool
+echo '{"city":"London"}' | devic tool-servers tools test <serverId> get_weather --from-json -
+```
+
+### Pipe JSON between commands
+
+```bash
+# Get all completed threads and their evaluations
+devic agents threads list <agentId> --state COMPLETED -o json | \
+  jq -r '.[].threadId' | \
+  while read tid; do devic agents threads evaluate "$tid"; done
+```
