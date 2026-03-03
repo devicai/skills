@@ -150,6 +150,7 @@ The Devic API is organized into three main sections:
 
 Manage AI assistants that can process messages and maintain conversation history.
 
+- Create, update, and delete assistant specializations
 - List and retrieve assistant specializations
 - Send messages to assistants
 - Manage chat histories
@@ -238,6 +239,20 @@ API rate limits are applied per API key. Contact support for rate limit details 
 | 500 | Internal Server Error |
 
 ## Quick Start Examples
+
+### Create an assistant
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/assistants" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Assistant",
+    "description": "A helpful assistant",
+    "model": "gpt-4.1-mini",
+    "provider": "openai"
+  }'
+```
 
 ### Send a message to an assistant
 

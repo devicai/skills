@@ -8,6 +8,9 @@ The Assistants API allows you to interact with AI assistants that can process me
 |--------|----------|-------------|
 | GET | `/api/v1/assistants` | List all assistant specializations |
 | GET | `/api/v1/assistants/:identifier` | Get specific assistant |
+| POST | `/api/v1/assistants` | Create a new assistant |
+| PATCH | `/api/v1/assistants/:identifier` | Update an assistant |
+| DELETE | `/api/v1/assistants/:identifier` | Delete an assistant |
 | POST | `/api/v1/assistants/:identifier/messages` | Send message to assistant (sync or async) |
 | GET | `/api/v1/assistants/:identifier/chats` | List chat histories for assistant |
 | GET | `/api/v1/assistants/:identifier/chats/:chatUid` | Get specific chat history |
@@ -141,6 +144,153 @@ GET /api/v1/assistants/:identifier
     "model": "gpt-4",
     "provider": "openai"
   }
+}
+```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | Assistant specialization not found |
+
+---
+
+## Create Assistant
+
+Creates a new assistant specialization.
+
+```
+POST /api/v1/assistants
+```
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | **Yes** | Assistant display name |
+| `description` | string | No | Description of the assistant's purpose |
+| `presets` | string | No | System prompt / instructions |
+| `model` | string | No | Default LLM model |
+| `provider` | string | No | Default LLM provider |
+| `imgUrl` | string | No | Image URL for the assistant |
+| `state` | string | No | State: `active`, `inactive`, or `coming_soon` |
+| `availableToolsGroupsUids` | string[] | No | Tool group UIDs the assistant can use |
+| `enabledTools` | string[] | No | Explicit subset of enabled tool names |
+| `accessConfiguration` | object | No | `{ externalAccess?: boolean, visibilityByRole?: string[] }` |
+| `widgetConfiguration` | object | No | `{ enabled?: boolean, sourcesWhiteList?: string[], color?: string, welcomeMessage?: string }` |
+| `memoryDocuments` | object[] | No | RAG memory documents `[{ genericDocument?, name?, summary? }]` |
+| `structuredOutput` | object | No | JSON schema configuration for structured output |
+| `guardrailsConfiguration` | object | No | `{ enabled?: boolean, guardrails?: any }` |
+| `codeSnippetIds` | string[] | No | Code snippet IDs available to the assistant |
+| `availableSkillIds` | string[] | No | Skill IDs the assistant can use |
+| `subagentsIds` | string[] | No | Subagent IDs the assistant can invoke |
+| `maxChatMessages` | number | No | Maximum chat messages to include in context |
+| `maxToolResponseInputTokens` | number | No | Maximum input tokens for tool responses |
+
+### Response (201 Created)
+
+Returns the full assistant detail object (`AssistantDetailResponseDto`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "60f7b2a1c3e4d5f6a7b8c9d0",
+    "identifier": "a1289b11-fe5a-4c50-8e90-138850651932",
+    "name": "Customer Support Assistant",
+    "description": "Helps with customer inquiries",
+    "presets": "You are a helpful support agent...",
+    "model": "gpt-4.1-mini",
+    "provider": "openai",
+    "availableToolsGroupsUids": [],
+    "codeSnippetIds": [],
+    "availableSkillIds": [],
+    "subagentsIds": [],
+    "creationTimestampMs": 1772547299956
+  }
+}
+```
+
+### Example
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/assistants" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Sales Assistant",
+    "description": "Helps with sales inquiries",
+    "presets": "You are a sales expert...",
+    "model": "gpt-4.1-mini",
+    "provider": "openai"
+  }'
+```
+
+---
+
+## Update Assistant
+
+Updates an existing assistant specialization. Supports partial updates — only include fields you want to change.
+
+```
+PATCH /api/v1/assistants/:identifier
+```
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `identifier` | string | The unique identifier of the assistant |
+
+### Request Body
+
+All fields from `CreateAssistantDto` are accepted, but all are optional. Only provided fields will be updated.
+
+### Response (200 OK)
+
+Returns the updated assistant detail object (`AssistantDetailResponseDto`), same structure as the Create response.
+
+### Example
+
+```bash
+curl -X PATCH "https://api.devic.ai/api/v1/assistants/a1289b11-fe5a-4c50-8e90-138850651932" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Sales Assistant (Updated)",
+    "model": "gpt-4.1"
+  }'
+```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | Assistant specialization not found |
+
+---
+
+## Delete Assistant
+
+Deletes an assistant specialization and performs cleanup (removes RAG memory documents and internal API key).
+
+```
+DELETE /api/v1/assistants/:identifier
+```
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `identifier` | string | The unique identifier of the assistant |
+
+### Response (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "Assistant deleted successfully",
+  "deletedId": "60f7b2a1c3e4d5f6a7b8c9d0"
 }
 ```
 

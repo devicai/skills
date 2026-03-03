@@ -120,6 +120,40 @@ Get details of a specific assistant.
 devic assistants get <identifier>
 ```
 
+#### devic assistants create
+
+Create a new assistant.
+
+```bash
+devic assistants create [--name <name>] [--description <desc>] [--from-json <file>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--name <name>` | Assistant name |
+| `--description <desc>` | Assistant description |
+| `--from-json <file>` | Read full assistant config from JSON file (- for stdin) |
+
+The `--from-json` payload supports all assistant specialization fields: `name`, `description`, `presets`, `model`, `provider`, `imgUrl`, `state`, `availableToolsGroupsUids`, `enabledTools`, `accessConfiguration`, `widgetConfiguration`, `memoryDocuments`, `structuredOutput`, `guardrailsConfiguration`, `codeSnippetIds`, `availableSkillIds`, `subagentsIds`, `maxChatMessages`, `maxToolResponseInputTokens`.
+
+#### devic assistants update
+
+Update an existing assistant (partial updates supported).
+
+```bash
+devic assistants update <identifier> [--name <name>] [--description <desc>] [--from-json <file>]
+```
+
+Same options as `create`. Only provided fields will be updated.
+
+#### devic assistants delete
+
+Delete an assistant.
+
+```bash
+devic assistants delete <identifier>
+```
+
 #### devic assistants chat
 
 Send a message to an assistant. Uses async mode with polling by default.
