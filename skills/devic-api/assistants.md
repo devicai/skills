@@ -39,6 +39,7 @@ Assistant Specializations define how an assistant behaves, what tools it can use
 | `model` | string | Default LLM model |
 | `provider` | string | Default LLM provider |
 | `memoryDocuments` | object[] | Persistent context documents |
+| `inputDelayMs` | number | Message buffer delay in ms for async mode (500–30000). See [Message Buffering](#message-buffering-input-delay) |
 | `accessConfiguration` | object | Visibility and external access settings |
 
 ### Tool Access
@@ -186,6 +187,7 @@ POST /api/v1/assistants
 | `subagentsIds` | string[] | No | Subagent IDs the assistant can invoke |
 | `maxChatMessages` | number | No | Maximum chat messages to include in context |
 | `maxToolResponseInputTokens` | number | No | Maximum input tokens for tool responses |
+| `inputDelayMs` | number | No | Message buffer delay in ms for async mode (min: 500, max: 30000). See [Message Buffering](#message-buffering-input-delay) |
 
 ### Response (201 Created)
 
@@ -407,6 +409,7 @@ curl -X GET "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-
 |--------|-------------|
 | 400 | Invalid input data, provider not configured, or model not supported |
 | 404 | Assistant specialization not found |
+| 409 | Chat is currently processing (only when `inputDelayMs` is configured and chat status is `processing`) |
 
 ---
 
@@ -550,6 +553,7 @@ GET /api/v1/assistants/:identifier/chats/:chatUid/realtime
 
 | Status | Description |
 |--------|-------------|
+| `buffering` | Messages are being collected before processing (see [Message Buffering](#message-buffering-input-delay)) |
 | `processing` | Message is currently being processed by the assistant |
 | `completed` | Processing finished successfully |
 | `error` | An error occurred during processing |
@@ -577,6 +581,8 @@ async function waitForResult(identifier, chatUid) {
     if (result.data.status === 'error') {
       throw new Error('Processing failed');
     }
+
+    // 'buffering' and 'processing' — keep polling
 
     await new Promise(resolve => setTimeout(resolve, pollInterval));
   }
@@ -726,3 +732,45 @@ curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages" \
 ```
 
 **Note:** The provider must be configured in your account settings before use. The model must belong to the specified provider.
+
+---
+
+## Message Buffering (Input Delay)
+
+When integrating assistants with external chat platforms (WhatsApp, Telegram, etc.), users often send multiple short messages in quick succession. Without buffering, each message triggers an independent LLM call, producing fragmented responses and unnecessary costs.
+
+The `inputDelayMs` field on an assistant configures a **debounce window**. When set, consecutive messages sent in async mode are accumulated in a buffer and merged into a single processing call after the delay expires.
+
+### How It Works
+
+1. A message arrives via `POST /:identifier/messages?async=true`
+2. If the assistant has `inputDelayMs` configured, the message is buffered instead of processed immediately
+3. The realtime status is set to `buffering`
+4. Each new message within the delay window resets the timer
+5. Once the timer expires (no new messages for `inputDelayMs` milliseconds), all buffered messages are merged and processed as one
+6. Status transitions: `buffering` → `processing` → `completed`
+
+### Merging Behavior
+
+- **Text**: Messages are joined with newline (`\n`) in arrival order
+- **Files**: All files from all buffered messages are flattened into a single array
+
+### Configuration
+
+Set `inputDelayMs` when creating or updating an assistant:
+
+```bash
+curl -X PATCH "https://api.devic.ai/api/v1/assistants/my-whatsapp-bot" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{ "inputDelayMs": 5000 }'
+```
+
+To disable buffering, set it to `undefined` or `0`, or omit the field.
+
+### Constraints
+
+- **Async mode only**: Buffering is ignored in synchronous mode
+- **Range**: 500 – 30000 ms
+- **Conflict during processing**: Sending a message while status is `processing` returns `409 Conflict` — the client must wait for completion before sending new messages
+- **Multi-instance safe**: Uses Redis distributed locks so only one instance processes the buffer

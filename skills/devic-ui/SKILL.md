@@ -373,53 +373,6 @@ Replace the default tool call summary with custom UI per tool name:
 />
 ```
 
-### Tool Groups (Grouped Tool Call Rendering)
-
-Group consecutive tool calls into a single unified renderer. Useful for rendering sequences of related tool calls (e.g., terminal commands + file reads) as a cohesive UI block.
-
-```tsx
-import { ChatDrawer, ToolGroupCall, ToolGroupConfig } from '@devicai/ui';
-
-const toolGroups: ToolGroupConfig[] = [
-  {
-    tools: ['run_terminal_command', 'read_sandbox_file'],
-    renderer: (calls: ToolGroupCall[]) => (
-      <div className="terminal-trace">
-        {calls.map((call) => (
-          <div key={call.toolCallId} className="trace-entry">
-            <code>{call.name}</code>
-            <pre>{JSON.stringify(call.input, null, 2)}</pre>
-            {call.output && <pre className="output">{JSON.stringify(call.output)}</pre>}
-          </div>
-        ))}
-      </div>
-    ),
-  },
-];
-
-<ChatDrawer
-  assistantId="my-assistant"
-  options={{
-    toolGroups,
-    // toolRenderers still works for non-grouped tools
-    toolRenderers: {
-      search_web: (input, output) => <SearchResult query={input.query} results={output} />,
-    },
-  }}
-/>
-```
-
-Tool groups work in all three components: `ChatDrawer`, `AICommandBar`, and `AIGenerationButton`. When consecutive tool calls match the same group's `tools` array, they are accumulated and passed as a single array to the group's `renderer`. Non-matching tools render individually as before (using `toolRenderers` or default rendering).
-
-The `segmentToolCalls` utility is also exported for custom implementations:
-
-```tsx
-import { segmentToolCalls, ToolGroupCall, ToolGroupConfig } from '@devicai/ui';
-
-const segments = segmentToolCalls(calls, toolGroups);
-// Returns: Array<{ type: 'group', config, calls } | { type: 'single', call, index }>
-```
-
 ## Theming
 
 ### Using Props
@@ -600,11 +553,6 @@ const checkResponse = async () => {
     return result.chatHistory;
   } else if (result.status === 'error') {
     throw new Error('Processing failed');
-  } else if (result.status === 'handed_off') {
-    // Assistant delegated to a subagent
-    // result.handedOffSubThreadId contains the subthread ID
-    console.log('Handed off to subthread:', result.handedOffSubThreadId);
-    // Continue polling until the handoff completes and processing resumes
   }
 
   // Continue polling
@@ -668,35 +616,20 @@ import type {
   // Tool types
   ModelInterfaceTool,
   ModelInterfaceToolSchema,
-  ToolGroupCall,
-  ToolGroupConfig,
 
   // Hook types
   UseDevicChatOptions,
   UseDevicChatResult,
 
   // API types
-  RealtimeChatHistory,  // Includes status (with 'handed_off') and handedOffSubThreadId
-  RealtimeStatus,       // 'processing' | 'completed' | 'error' | 'waiting_for_tool_response' | 'handed_off'
+  RealtimeChatHistory,
   AssistantSpecialization,
 
   // Feedback types
   FeedbackSubmission,
   FeedbackEntry,
   FeedbackTheme,
-
-  // Agent/Handoff types
-  ThreadStateTagProps,
-  StateConfig,
-  HandoffSubagentWidgetProps,
-  AgentThreadDto,
-  AgentTaskDto,
-  AgentDto,
-  HandOffToolResponse,
 } from '@devicai/ui';
-
-// Import the AgentThreadState enum (value export)
-import { AgentThreadState, segmentToolCalls } from '@devicai/ui';
 
 // Use types in your code
 const chatOptions: ChatDrawerOptions = {
@@ -727,7 +660,6 @@ const handleCommandResult = (result: CommandBarResult) => {
 
 const handleGenerationResult = (result: GenerationResult) => {
   console.log('Generated content:', result.message.content.message);
-  console.log('Tool calls executed:', result.toolCalls);
 };
 ```
 
@@ -794,8 +726,6 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `toolRenderers` | `Record<string, (input, output) => ReactNode>` | — | Custom tool call renderers by tool name |
 | `toolIcons` | `Record<string, ReactNode>` | — | Custom tool call icons by tool name |
 | `showFeedback` | `boolean` | `true` | Show thumbs up/down feedback buttons on assistant messages |
-| `handoffWidgetRenderer` | `(props: { thread, agent, elapsedSeconds, isTerminal }) => ReactNode` | — | Custom renderer for the HandoffSubagentWidget (replaces default UI) |
-| `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
 
 ## Message Feedback
 
@@ -1208,7 +1138,6 @@ function CustomCommandBar() {
 | `historyStorageKey` | `string` | `'devic-command-bar-history'` | localStorage key |
 | `commands` | `AICommandBarCommand[]` | — | Slash commands |
 | `showHistoryCommand` | `boolean` | `true` | Add built-in /history command |
-| `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
 
 ## AICommandBarHandle Reference
 
@@ -1511,10 +1440,6 @@ function CustomGenerateButton() {
 | `fontSize` | `number \| string` | `14` | Font size |
 | `zIndex` | `number` | `10000` | Z-index for overlays |
 | `animationDuration` | `number` | `200` | Animation duration (ms) |
-| `toolRenderers` | `Record<string, (input, output) => ReactNode>` | — | Custom tool call renderers by tool name |
-| `toolIcons` | `Record<string, ReactNode>` | — | Custom tool icons by tool name |
-| `processingMessage` | `string` | `'Processing...'` | Message shown during processing |
-| `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
 
 ## AIGenerationButtonHandle Reference
 
@@ -1527,244 +1452,6 @@ Methods exposed via ref:
 | `close()` | Close modal/tooltip |
 | `reset()` | Reset component state |
 | `isProcessing` | Boolean indicating if processing |
-
-## Subagent Handoff System
-
-The library supports assistant-to-subagent handoff, where an assistant delegates work to a specialized agent. During handoff, the chat input is automatically disabled and a widget displays the subagent's progress in real time.
-
-### How It Works
-
-1. The assistant calls a `hand_off_subagent` tool, which creates a subthread on the backend
-2. The realtime polling response status changes to `handed_off` with a `handedOffSubThreadId` field
-3. `useDevicChat` detects the `handed_off` status, stops main polling, and sets `handedOff: true` with the subthread ID
-4. ChatInput is disabled with a "Waiting for subagent to complete" notice
-5. A `HandoffSubagentWidget` renders inline in the tool timeline, polling the subthread every 5s for status, tasks progress, and summary
-6. A background handoff poll checks the realtime endpoint every 5s to detect when the parent thread is no longer in `handed_off` state
-7. When the subthread reaches a terminal state (completed, failed, terminated), the widget calls `onHandoffCompleted` which clears handoff state and resumes main polling to pick up the parent thread's continuation
-
-### Automatic Handoff in ChatDrawer
-
-When using `ChatDrawer`, handoff is handled automatically. No extra configuration is needed — the widget appears inline when a `hand_off_subagent` tool call is detected, and the input is disabled until completion.
-
-```tsx
-<ChatDrawer
-  assistantId="my-assistant"
-  // Handoff works out of the box
-/>
-```
-
-### Custom Handoff Widget
-
-Replace the default handoff widget UI using `handoffWidgetRenderer`:
-
-```tsx
-<ChatDrawer
-  assistantId="my-assistant"
-  options={{
-    handoffWidgetRenderer: ({ thread, agent, elapsedSeconds, isTerminal }) => (
-      <div className="my-custom-handoff">
-        <span>{agent?.name || 'Subagent'} is working...</span>
-        {thread?.tasks && (
-          <span>
-            {thread.tasks.filter(t => t.completed).length}/{thread.tasks.length} tasks
-          </span>
-        )}
-        {isTerminal && <span>Done!</span>}
-      </div>
-    ),
-  }}
-/>
-```
-
-### HandoffSubagentWidget (Standalone)
-
-Use `HandoffSubagentWidget` directly for custom chat UIs:
-
-```tsx
-import { HandoffSubagentWidget } from '@devicai/ui';
-
-<HandoffSubagentWidget
-  subThreadId="thread-abc-123"
-  onCompleted={() => console.log('Subagent finished')}
-  renderWidget={({ thread, agent, elapsedSeconds, isTerminal }) => (
-    <MyCustomWidget thread={thread} agent={agent} />
-  )}
-/>
-```
-
-### HandoffSubagentWidget Props Reference
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `subThreadId` | `string` | *required* | The subthread ID to monitor |
-| `onCompleted` | `() => void` | — | Called when subthread reaches a terminal state |
-| `apiKey` | `string` | — | API key (overrides provider) |
-| `baseUrl` | `string` | — | Base URL (overrides provider) |
-| `renderWidget` | `(props: { thread, agent, elapsedSeconds, isTerminal }) => ReactNode` | — | Custom renderer replacing the entire widget |
-
-### useDevicChat Handoff Fields
-
-When building custom UIs with `useDevicChat`, the hook exposes handoff state:
-
-```tsx
-import { useDevicChat } from '@devicai/ui';
-
-function CustomChat() {
-  const {
-    messages,
-    sendMessage,
-    handedOff,              // true when a handoff is active
-    handedOffSubThreadId,   // subthread ID being monitored
-    onHandoffCompleted,     // callback for HandoffSubagentWidget
-    // ...other fields
-  } = useDevicChat({ assistantId: 'my-assistant' });
-
-  return (
-    <div>
-      {/* Render messages, detect hand_off_subagent tool calls */}
-      {handedOff && handedOffSubThreadId && (
-        <HandoffSubagentWidget
-          subThreadId={handedOffSubThreadId}
-          onCompleted={onHandoffCompleted}
-        />
-      )}
-
-      <input disabled={handedOff} placeholder="Type a message..." />
-    </div>
-  );
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `handedOff` | `boolean` | Whether the assistant has handed off to a subagent (set when realtime status is `handed_off`) |
-| `handedOffSubThreadId` | `string \| null` | The active subthread ID (from `RealtimeChatHistory.handedOffSubThreadId`) |
-| `onHandoffCompleted` | `() => void` | Callback that clears handoff state and resumes main polling when subagent finishes |
-| `status` | `RealtimeStatus \| 'idle'` | Current status — includes `'handed_off'` when a handoff is active |
-
-## ThreadStateTag Component
-
-A standalone component that displays the current state of an agent thread as a colored tag with an interactive dropdown for actions (explain, pause, resume, approve, complete).
-
-### Basic Usage
-
-```tsx
-import { ThreadStateTag, AgentThreadState } from '@devicai/ui';
-
-<ThreadStateTag
-  state={AgentThreadState.PROCESSING}
-  threadId="thread-abc-123"
-  agentName="Research Agent"
-/>
-```
-
-### Interactive Actions
-
-When `interactive` is true (default), clicking the tag opens a dropdown with context-specific actions:
-
-- **Explain Thread**: AI-generated explanation of what the thread has done (with typing animation)
-- **Pause/Resume**: Pause a processing thread or resume a paused one
-- **Review Approval**: Approve or reject a thread waiting for approval
-- **Complete Manually**: Admin action to manually complete/fail/terminate a thread
-
-```tsx
-<ThreadStateTag
-  state={AgentThreadState.PAUSED_FOR_APPROVAL}
-  threadId="thread-abc-123"
-  agentName="Deployment Agent"
-  showAdminActions={true}
-  onActionComplete={(info) => {
-    if (info === 'WAITING_FOR_RESPONSE_EXPIRED') {
-      console.log('Response window expired');
-    }
-    refreshThread();
-  }}
-/>
-```
-
-### Display-Only Mode
-
-Disable the dropdown for read-only contexts:
-
-```tsx
-<ThreadStateTag
-  state={thread.state}
-  threadId={thread._id}
-  agentName="My Agent"
-  interactive={false}
-/>
-```
-
-### Thread States
-
-The `AgentThreadState` enum defines all 12 possible states:
-
-| State | Tag Color | Description |
-|-------|-----------|-------------|
-| `QUEUED` | Gold | Waiting to start |
-| `PROCESSING` | Blue (processing) | Actively running |
-| `COMPLETED` | Green | Successfully finished |
-| `FAILED` | Red | Failed with error |
-| `TERMINATED` | Red | Manually terminated |
-| `PAUSED` | Gold | Paused by user or system |
-| `PAUSED_FOR_APPROVAL` | Gold | Waiting for approval |
-| `APPROVAL_REJECTED` | Red | Approval was rejected |
-| `WAITING_FOR_RESPONSE` | Purple | Waiting for external input |
-| `PAUSED_FOR_RESUME` | Gold | Paused and waiting to resume |
-| `HANDED_OFF` | Blue | Delegated to subagent(s) |
-| `GUARDRAIL_TRIGGER` | Red | Guardrail violation |
-
-### ThreadStateTag Props Reference
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `state` | `AgentThreadState \| string` | *required* | Current thread state |
-| `threadId` | `string` | *required* | Thread ID for API actions |
-| `agentName` | `string` | *required* | Agent name shown in modals |
-| `showIcon` | `boolean` | `true` | Show icon next to state text |
-| `customIcon` | `ReactNode` | — | Replace the default state icon |
-| `pausedReason` | `string` | — | Reason for pause (shown in tooltip) |
-| `approvalRejectedMessage` | `string` | — | Message when approval rejected |
-| `finishReason` | `string` | — | Reason the thread finished |
-| `onActionComplete` | `(info?) => void` | — | Callback after actions (explain, pause, approve, etc.) |
-| `pauseUntil` | `number` | — | Timestamp until which thread is paused |
-| `subthreadCount` | `number` | — | Number of parallel subthreads (shown in handed_off tooltip) |
-| `showAdminActions` | `boolean` | `false` | Show admin actions (complete manually) |
-| `apiKey` | `string` | — | API key (overrides provider) |
-| `baseUrl` | `string` | — | Base URL (overrides provider) |
-| `interactive` | `boolean` | `true` | Enable dropdown on click |
-
-## Agent API Client Methods
-
-The `DevicApiClient` includes methods for managing agent threads:
-
-```tsx
-import { DevicApiClient } from '@devicai/ui';
-
-const client = new DevicApiClient({ apiKey: 'your-api-key' });
-
-// Get thread details (optionally with tasks)
-const thread = await client.getThreadById('thread-id', true);
-
-// Get agent details
-const agent = await client.getAgentDetails('agent-id');
-
-// Get AI explanation of thread execution
-const explanation = await client.explainAgentThread('thread-id');
-
-// Pause or resume a thread
-await client.pauseResumeThread('thread-id', 'paused');
-await client.pauseResumeThread('thread-id', 'queued');
-
-// Handle approval (approve/reject with optional retry and message)
-await client.handleThreadApproval('thread-id', true, false, 'Looks good');
-
-// Manually complete a thread
-await client.completeThread('thread-id', 'completed');
-
-// Get full chat content (used after handoff completes)
-const messages = await client.getChatHistoryContent('assistant-id', 'chat-uid');
-```
 
 ## Troubleshooting
 
@@ -1785,14 +1472,6 @@ const messages = await client.getChatHistoryContent('assistant-id', 'chat-uid');
 1. Verify the tool schema matches OpenAI function calling format
 2. Check that `toolName` matches `function.name` in schema
 3. Ensure the assistant has been configured to use client-side tools
-
-### Handoff widget not appearing
-
-1. Ensure the assistant is configured with a `hand_off_subagent` tool on the backend
-2. The widget renders inside the tool timeline — verify `showToolTimeline` is not set to `false`
-3. Check that the API key has permission to access agent thread endpoints
-4. Verify the realtime response returns `status: 'handed_off'` with `handedOffSubThreadId` — the handoff detection relies on this
-5. Check console for `[useDevicChat] Handoff state set:` logs to confirm the subthread ID is being received
 
 ### File uploads not working
 
