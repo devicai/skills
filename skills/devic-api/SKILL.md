@@ -186,7 +186,18 @@ Configure external tool integrations that agents and assistants can use.
 
 For detailed documentation, see [tool-servers.md](tool-servers.md).
 
-### 4. Feedback API
+### 4. Files API
+
+Upload files and get shareable download URLs. Used for attaching files to assistant messages.
+
+- Upload files via multipart/form-data
+- Get download URLs for uploaded files
+
+**Base path:** `/api/v1/files`
+
+For detailed documentation, see [files.md](files.md).
+
+### 5. Feedback API
 
 Collect user feedback on AI responses from both assistants and agents.
 

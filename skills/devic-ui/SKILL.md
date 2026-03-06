@@ -257,7 +257,7 @@ function CustomChat() {
 
 ## File Uploads
 
-Enable file attachments in chat:
+Enable file attachments in chat. Files are uploaded to the Devic API (`POST /api/v1/files/upload`) by default, which returns a download URL that is sent along with the message.
 
 ```tsx
 <ChatDrawer
@@ -271,6 +271,36 @@ Enable file attachments in chat:
       video: false,
     },
     maxFileSize: 10 * 1024 * 1024, // 10MB
+  }}
+/>
+```
+
+### Custom File Upload Handler
+
+Replace the default upload with your own implementation using `onFileUpload`. It receives the raw `File` objects and must return `ChatFile[]` with `downloadUrl` populated:
+
+```tsx
+import { ChatDrawer, ChatFile } from '@devicai/ui';
+
+<ChatDrawer
+  assistantId="document-assistant"
+  options={{ enableFileUploads: true }}
+  onFileUpload={async (files: File[]): Promise<ChatFile[]> => {
+    // Upload to your own storage (S3, Firebase, etc.)
+    const results = await Promise.all(
+      files.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/my-upload', { method: 'POST', body: formData });
+        const { url } = await res.json();
+        return {
+          name: file.name,
+          downloadUrl: url,
+          fileType: file.type.startsWith('image/') ? 'image' : 'document',
+        } as ChatFile;
+      })
+    );
+    return results;
   }}
 />
 ```
@@ -754,6 +784,7 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `onChatCreated` | `(chatUid) => void` | — | Fires when a new chat is created |
 | `onOpen` | `() => void` | — | Fires when drawer opens |
 | `onClose` | `() => void` | — | Fires when drawer closes |
+| `onFileUpload` | `(files: File[]) => Promise<ChatFile[]>` | — | Custom file upload handler. Replaces default Devic API upload. Must return ChatFile[] with downloadUrl |
 | `onConversationChange` | `(chatUid) => void` | — | Fires when active conversation changes |
 
 ## ChatDrawerOptions Reference
@@ -1798,7 +1829,9 @@ const messages = await client.getChatHistoryContent('assistant-id', 'chat-uid');
 
 1. Enable file uploads in options: `enableFileUploads: true`
 2. Check allowed file types configuration
-3. Verify file size is within limits
+3. Verify file size is within limits (default 10MB in UI, 25MB max at API)
+4. If using the default upload (no `onFileUpload`), ensure the API key has access to `POST /api/v1/files/upload`
+5. If using a custom `onFileUpload`, ensure it returns `ChatFile[]` with valid `downloadUrl` values
 
 ## Support
 
