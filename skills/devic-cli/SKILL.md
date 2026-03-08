@@ -324,9 +324,7 @@ devic agents threads list <agentId> [options]
 | `--end-date <date>` | End date filter |
 | `--date-order <order>` | Sort: `asc` or `desc` |
 | `--tags <tags>` | Comma-separated tags |
-| `--omit-content` | Exclude thread content from response (returns metadata, tasks, and state only). Significantly reduces payload size for large thread lists |
-
-In human output mode, the thread list table includes a **tasks** column showing task completion status and names (e.g., `2/3: Task A, Task B, Task C`).
+| `--omit-content` | Exclude thread content from response (returns metadata and state only). Significantly reduces payload size for large thread lists |
 
 #### devic agents threads get
 
