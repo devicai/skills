@@ -324,12 +324,20 @@ devic agents threads list <agentId> [options]
 | `--end-date <date>` | End date filter |
 | `--date-order <order>` | Sort: `asc` or `desc` |
 | `--tags <tags>` | Comma-separated tags |
+| `--omit-content` | Exclude thread content from response (returns metadata, tasks, and state only). Significantly reduces payload size for large thread lists |
+
+In human output mode, the thread list table includes a **tasks** column showing task completion status and names (e.g., `2/3: Task A, Task B, Task C`).
 
 #### devic agents threads get
 
 ```bash
-devic agents threads get <threadId> [--with-tasks]
+devic agents threads get <threadId> [--with-tasks] [--grep <pattern>]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--with-tasks` | Include task details |
+| `--grep <pattern>` | Filter thread content to only show messages matching the pattern (case-insensitive). Useful for finding specific data within large threads without scanning the full content manually |
 
 #### devic agents threads approve
 
@@ -636,6 +644,25 @@ EOF
 
 # Test the tool
 echo '{"city":"London"}' | devic tool-servers tools test <serverId> get_weather --from-json -
+```
+
+### Search for specific data in agent threads
+
+```bash
+# List threads without content (fast, metadata only)
+devic agents threads list <agentId> --omit-content --limit 50
+
+# Find a specific email within a thread's content
+devic agents threads get <threadId> --grep "user@example.com"
+
+# Combine: list threads, then search each for a keyword
+devic agents threads list <agentId> --omit-content -o json | \
+  jq -r '.[].threadId' | \
+  while read tid; do
+    RESULT=$(devic agents threads get "$tid" --grep "target@email.com" -o json)
+    COUNT=$(echo "$RESULT" | jq '.threadContent | length')
+    if [ "$COUNT" -gt "0" ]; then echo "Found in thread: $tid"; fi
+  done
 ```
 
 ### Pipe JSON between commands
