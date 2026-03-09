@@ -370,6 +370,59 @@ Enable drag-to-resize with width constraints:
 />
 ```
 
+### Custom Prompt Box
+
+Replace the entire default input area with a custom React component. The component receives `sendMessage`, `stop`, `isLoading`, and `newConversation` props so it can fully drive the conversation.
+
+```tsx
+import { ChatDrawer, CustomPromptBoxProps } from '@devicai/ui';
+
+function MyPromptBox({ sendMessage, stop, isLoading, newConversation }: CustomPromptBoxProps) {
+  const [text, setText] = useState('');
+
+  const handleSend = () => {
+    if (!text.trim()) return;
+    sendMessage(text.trim());
+    setText('');
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 8, padding: 8 }}>
+      <button onClick={newConversation} title="New conversation">+</button>
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+        placeholder="Ask anything..."
+        disabled={isLoading}
+        style={{ flex: 1 }}
+      />
+      {isLoading ? (
+        <button onClick={stop}>Stop</button>
+      ) : (
+        <button onClick={handleSend} disabled={!text.trim()}>Send</button>
+      )}
+    </div>
+  );
+}
+
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    customPromptBox: (props) => <MyPromptBox {...props} />,
+  }}
+/>
+```
+
+The `CustomPromptBoxProps` interface:
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `sendMessage` | `(message: string, files?: File[]) => void` | Send a message (optionally with file attachments) |
+| `stop` | `() => void` | Stop the current assistant processing |
+| `isLoading` | `boolean` | Whether the assistant is currently processing / polling |
+| `newConversation` | `() => void` | Clear the current conversation and start a new one |
+
 ### Custom Send Button
 
 The click handler is managed by an overlay, so the node doesn't need to handle click events.
@@ -827,6 +880,7 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `showFeedback` | `boolean` | `true` | Show thumbs up/down feedback buttons on assistant messages |
 | `handoffWidgetRenderer` | `(props: { thread, agent, elapsedSeconds, isTerminal }) => ReactNode` | — | Custom renderer for the HandoffSubagentWidget (replaces default UI) |
 | `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
+| `customPromptBox` | `(props: CustomPromptBoxProps) => ReactNode` | — | Replace the default input area with a custom component. Receives `sendMessage`, `stop`, `isLoading`, and `newConversation` |
 
 ## Message Feedback
 
