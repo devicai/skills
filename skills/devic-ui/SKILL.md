@@ -69,6 +69,10 @@ function YourApp() {
           suggestedMessages: [
             'Help me get started',
             'What can you do?',
+            {
+              content: <><span>🚀</span> Launch a workflow</>,
+              message: 'I want to launch a workflow',
+            },
           ],
         }}
       />
@@ -732,6 +736,7 @@ import type {
   ChatDrawerProps,
   ChatDrawerOptions,
   ChatDrawerHandle,
+  SuggestedMessage,
 
   // AICommandBar types
   AICommandBarProps,
@@ -856,7 +861,7 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `title` | `string \| ReactNode` | `'Chat'` | Header title |
 | `showAvatar` | `boolean` | `false` | Show assistant image next to title |
 | `welcomeMessage` | `string` | — | Welcome message shown at start |
-| `suggestedMessages` | `string[]` | — | Quick action suggestions |
+| `suggestedMessages` | `(string \| SuggestedMessage)[]` | — | Quick action suggestions. Accepts plain strings or objects with `content` (ReactNode) and `message` (string to send on click) |
 | `inputPlaceholder` | `string` | `'Type a message...'` | Input placeholder text |
 | `showToolTimeline` | `boolean` | `true` | Show tool execution timeline |
 | `enableFileUploads` | `boolean` | `false` | Enable file attachments |
