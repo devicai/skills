@@ -194,6 +194,125 @@ function App() {
 }
 ```
 
+### Interactive Response Widgets
+
+Instead of a `callback`, a tool can provide a `responseWidget` that renders
+a React component in the chat UI. The user interacts with the widget and
+the widget calls `submit(response)` to produce the tool response that is
+sent back to the model. Use this when the tool response depends on
+user input (confirmation, selection, rating, custom form, etc.).
+
+Two render modes are supported:
+
+- `render: 'inline'` — the widget is rendered inside the message thread
+  at the position of the tool call. The chat input is disabled while
+  inline widgets are pending.
+- `render: 'input'` — the widget replaces the chat input area until it
+  is submitted or cancelled. Only one `input` widget is shown at a time;
+  additional calls are queued.
+
+```tsx
+import {
+  ChatDrawer,
+  ModelInterfaceTool,
+  ResponseWidgetProps,
+} from '@devicai/ui';
+
+// Inline confirmation widget
+function ConfirmationWidget({ params, submit, cancel }: ResponseWidgetProps) {
+  return (
+    <div>
+      <p>{params.action}</p>
+      <button onClick={() => submit({ confirmed: true })}>Confirm</button>
+      <button onClick={() => submit({ confirmed: false })}>Reject</button>
+      <button onClick={() => cancel?.('Dismissed by user')}>Dismiss</button>
+    </div>
+  );
+}
+
+// Input-replacement rating widget
+function RatingWidget({ params, submit, cancel }: ResponseWidgetProps) {
+  const [value, setValue] = useState(0);
+  return (
+    <div>
+      <span>Rate: {params.topic}</span>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button key={n} onClick={() => setValue(n)}>{n <= value ? '★' : '☆'}</button>
+      ))}
+      <button disabled={!value} onClick={() => submit({ rating: value })}>Submit</button>
+      <button onClick={() => cancel?.('Skipped')}>Skip</button>
+    </div>
+  );
+}
+
+const tools: ModelInterfaceTool[] = [
+  {
+    toolName: 'ask_user_confirmation',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'ask_user_confirmation',
+        description: 'Ask the user to confirm a destructive action',
+        parameters: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', description: 'Action to confirm' },
+          },
+          required: ['action'],
+        },
+      },
+    },
+    responseWidget: { render: 'inline', component: ConfirmationWidget },
+  },
+  {
+    toolName: 'ask_user_rating',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'ask_user_rating',
+        description: 'Ask the user to rate a topic from 1 to 5',
+        parameters: {
+          type: 'object',
+          properties: {
+            topic: { type: 'string' },
+          },
+          required: ['topic'],
+        },
+      },
+    },
+    responseWidget: { render: 'input', component: RatingWidget },
+  },
+];
+```
+
+`ResponseWidgetProps` the component receives:
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `toolCall` | `ToolCall` | The full tool call from the model (id, name, arguments) |
+| `params` | `any` | Parsed `toolCall.function.arguments` |
+| `submit` | `(response: any) => void` | Send the tool response to the model. Response is passed as the tool call result |
+| `cancel` | `(reason?: string) => void` | Cancel the tool call. Sends an error response so the model can continue |
+
+Rules:
+
+- A tool must define either `callback` or `responseWidget`, not both.
+- While any inline widgets are pending, the chat input is disabled.
+- While an `input` widget is pending, it replaces the default input area.
+- `submit` and `cancel` are one-shot — after either is called, the widget
+  is removed and its tool response is sent to the model. Polling resumes
+  automatically once all pending widgets resolve.
+
+Low-level access via `useDevicChat`:
+
+```tsx
+const {
+  pendingWidgetCalls,
+  submitWidgetResponse,
+  cancelWidgetCall,
+} = useDevicChat({ assistantId, modelInterfaceTools: tools });
+```
+
 ## Custom Chat UI with Hooks
 
 Build a completely custom chat interface:
@@ -756,6 +875,9 @@ import type {
   // Tool types
   ModelInterfaceTool,
   ModelInterfaceToolSchema,
+  ResponseWidgetProps,
+  ResponseWidgetConfig,
+  PendingWidgetCall,
   ToolGroupCall,
   ToolGroupConfig,
 

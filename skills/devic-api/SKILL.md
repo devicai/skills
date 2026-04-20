@@ -212,6 +212,12 @@ Collect user feedback on AI responses from both assistants and agents.
 
 For detailed documentation, see [feedback.md](feedback.md).
 
+### 6. Built-in Tools Reference
+
+List of all built-in tool groups with their UIDs, ready to use in `availableToolsGroupsUids`.
+
+For detailed documentation, see [built-in-tools.md](built-in-tools.md).
+
 ## Pagination
 
 List endpoints support pagination with the following query parameters:
