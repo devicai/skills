@@ -1740,6 +1740,179 @@ Methods exposed via ref:
 | `reset()` | Reset component state |
 | `isProcessing` | Boolean indicating if processing |
 
+## AIElementWrapper Component
+
+The `AIElementWrapper` wraps any React node and turns it into an AI-queryable element. When the user activates the floating trigger, the wrapper either:
+
+- Shows an inline floating tooltip with the assistant's answer (`behavior: 'inline'`), or
+- Pushes the wrapped element as a "reference" into the active `ChatDrawer` and opens the drawer (`behavior: 'drawer'`).
+
+The trigger and inline tooltip are rendered through a React portal anchored via `position: fixed`, so they always render above other UI (including the `ChatDrawer`) regardless of stacking context.
+
+### Quick Example
+
+```tsx
+import { DevicProvider, ChatDrawer, AIElementWrapper } from '@devicai/ui';
+
+function App() {
+  return (
+    <DevicProvider apiKey="devic-xxx">
+      {/* Inline behavior: hover the underlined value, click the pill,
+          and the AI's answer appears in a floating tooltip. */}
+      Última actualización:{' '}
+      <AIElementWrapper
+        label="Última actualización"
+        data={{ value: 'hace un momento' }}
+        behavior="inline"
+        assistantId="my-assistant"
+        getPrompt={({ data, label }) =>
+          `Explica qué significa "${label}" siendo ${data?.value}.`
+        }
+      >
+        <strong>hace un momento</strong>
+      </AIElementWrapper>
+
+      {/* Drawer behavior: pulling the trigger pushes a reference chip into
+          the ChatDrawer's prompt and opens the drawer. */}
+      <AIElementWrapper
+        label="Acme Corp"
+        data={{ country: 'ES', employees: 350 }}
+        behavior="drawer"
+        options={{ showOn: 'hover', triggerLabel: 'Preguntar al chat' }}
+      >
+        <CompanyCard company={acme} />
+      </AIElementWrapper>
+
+      {/* The drawer auto-registers itself in the DevicProvider so the
+          wrapper above can open it. No drawer ref or prop needed. */}
+      <ChatDrawer assistantId="my-assistant" mode="inline" />
+    </DevicProvider>
+  );
+}
+```
+
+### Behaviors
+
+| Behavior | What happens on activation |
+|----------|----------------------------|
+| `inline` | Sends the prompt built by `getPrompt({ data, label })` (or `Cuéntame más sobre: <label>` by default) and renders the answer in a floating tooltip near the wrapped element. Requires `assistantId`. |
+| `drawer` | Adds an `AIReference` to the `DevicProvider` registry and calls `openDrawer()`. The reference appears as a chip in the ChatDrawer's input area; the ChatDrawer prefixes the next user message with `Elemento referenciado: "<labels>"\n\n<msg>` and the user-message render shows a chip widget instead of the raw prefix. |
+
+### `showOn` modes
+
+The trigger pill can appear under different conditions:
+
+| `showOn` | Behavior |
+|----------|----------|
+| `'hover'` (default) | Visible while the wrapper or the trigger itself is hovered. Hover survives the gap between wrapper and pill (200 ms grace period). |
+| `'click'` | Visible only while the inline tooltip is open. |
+| `'always'` | Always visible. |
+| `'select'` | Visible only while the user has selected text inside the wrapper. The trigger anchors to the selection rectangle, not the wrapper. In `behavior: 'drawer'` mode, the selected text replaces the `label` of the reference. |
+
+Only one wrapper across the page can show its trigger at a time; later activations transparently hide previously active wrappers via a singleton registry.
+
+### Anatomy of the floating UI
+
+- **Trigger pill**: portal-rendered, `position: fixed`, anchored to the wrapper bounding rect (or the selection rect for `showOn: 'select'`).
+- **Inline tooltip** (only `behavior: 'inline'`): portal-rendered, anchored to the same rect, contains a header with the `label` and a body with the assistant's response. While processing, shows a spinner with "Pensando…".
+
+### `AIElementWrapperProps`
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `label` | `string` | Short identifier for the element. Used as chip text in drawer mode and as default-prompt fallback. |
+| `data` | `Record<string, any>` | Optional structured data, passed to `getPrompt` and stored on the reference. |
+| `referenceContent` | `React.ReactNode` | Optional rich content stored on the reference (drawer mode). |
+| `behavior` | `'inline' \| 'drawer'` | Default `'inline'`. |
+| `trigger` | `React.ReactNode` | Replaces the default sparkles+label pill. Click handler is attached automatically. |
+| `options` | `AIElementWrapperOptions` | Display options (see below). |
+| `assistantId` | `string` | Required when `behavior='inline'`. |
+| `getPrompt` | `(args: { data?: any; label: string }) => string` | Builds the prompt (inline mode). |
+| `apiKey` / `baseUrl` / `tenantId` / `tenantMetadata` | overrides for the `DevicProvider`. |
+| `modelInterfaceTools` | `ModelInterfaceTool[]` | Client-side tools (inline mode). |
+| `inlineRenderer` | `(message: ChatMessage) => React.ReactNode` | Custom renderer for the inline answer. |
+| `onActivate` / `onInlineResponse` / `onError` | Callbacks. |
+| `className` / `style` | Wrapper styling. |
+| `children` | `React.ReactNode` | The element being wrapped. |
+
+### `AIElementWrapperOptions`
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `showOn` | `'hover' \| 'click' \| 'always' \| 'select'` | `'hover'` | When the trigger pill appears. |
+| `triggerPlacement` | `'top' \| 'bottom' \| 'left' \| 'right'` | `'bottom'` | Trigger position relative to the anchor. |
+| `tooltipPlacement` | same | `'bottom'` | Inline tooltip position. |
+| `tooltipWidth` | `number \| string` | `360` | Inline tooltip width. |
+| `triggerLabel` | `string` | `'Preguntar a IA'` | Text inside the default pill. |
+| `highlightOnInteract` | `boolean` | `true` | Whether to highlight the wrapped content while interacting. |
+| `zIndex` | `number` | `2_147_483_000` | z-index of the portal-rendered overlays. |
+| `triggerBorderRadius` | `number \| string` | `999` | Border radius of the default pill. |
+| `color` | `string` | — | Primary color of the trigger gradient and tooltip accents. |
+| `defaultInlinePrompt` | `string` | — | Used when `getPrompt` is not provided. |
+
+### `AIElementWrapperHandle`
+
+| Method | Description |
+|--------|-------------|
+| `activate()` | Programmatically click the trigger. |
+| `close()` | Close the inline tooltip (no-op for drawer mode). |
+
+### Reference handling on `ChatDrawer`
+
+When `behavior='drawer'` is used, the wrapper integrates with the `ChatDrawer` through the `DevicProvider` (no extra prop wiring needed):
+
+1. The wrapper calls `addReference({ label, content, data })` on the provider and `openDrawer()`.
+2. The active `ChatDrawer` reads `references[]` from the provider context and:
+   - Renders chip widgets above the textarea (or passes them to a custom prompt box).
+   - On send, prefixes the user message with `Elemento referenciado: "<labels>"\n\n<message>`.
+   - Clears the references after sending.
+3. When the user message renders in the bubble, the prefix is parsed out and shown as small chip widgets above the bubble — the bubble itself only displays the user's actual message text. The LLM still receives the full prefixed content.
+
+### Custom prompt box integration
+
+`CustomPromptBoxProps` exposes the references so a custom input can render or strip them itself:
+
+```tsx
+function MyPromptBox({
+  sendMessage,
+  references,
+  removeReference,
+  isLoading,
+}: CustomPromptBoxProps) {
+  return (
+    <div>
+      {references.map((r) => (
+        <Chip key={r.id} onRemove={() => removeReference(r.id)}>
+          {r.label}
+        </Chip>
+      ))}
+      <TextInput
+        onSubmit={(text) => sendMessage(text)}
+        disabled={isLoading}
+      />
+    </div>
+  );
+}
+```
+
+### `DevicContext` extensions
+
+The `DevicProvider` now exposes references and drawer registration in the context value:
+
+| Field | Description |
+|-------|-------------|
+| `references: AIReference[]` | Active references created by `AIElementWrapper` instances. |
+| `addReference(ref): string` | Adds a reference, returns its generated id. |
+| `removeReference(id)` / `clearReferences()` | Reference management. |
+| `registerDrawer(handle): unregister` | Internal — `ChatDrawer` calls this on mount to make itself reachable to `openDrawer()`. |
+| `openDrawer()` | Opens the registered `ChatDrawer`. |
+
+### Notes
+
+- The wrapper does not require a `DevicProvider` to work in `'inline'` mode (you can pass `apiKey`/`baseUrl` directly), but `'drawer'` mode does need a provider so the wrapper can locate the registered `ChatDrawer`.
+- The trigger pill carries its own copy of the CSS variables (`--devic-aiwrap-color`, etc.) because portals do not inherit custom properties from the wrapper's stacking context.
+- The `'select'` mode also adapts the prompt: if `getPrompt` is not provided, the prompt becomes `Cuéntame más sobre: "<selected text>"`.
+
 ## Subagent Handoff System
 
 The library supports assistant-to-subagent handoff, where an assistant delegates work to a specialized agent. During handoff, the chat input is automatically disabled and a widget displays the subagent's progress in real time.
