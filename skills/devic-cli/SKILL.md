@@ -7,6 +7,10 @@ description: "@devicai/cli reference — the Devic AI Platform CLI. Use when exe
 
 CLI for the Devic AI Platform API. Agent-first — JSON output by default when piped, human-readable in terminal. Single runtime dependency (commander).
 
+## Companion guides
+
+- **[Thread Diagnostics with jq](./thread-diagnostics.md)** — Recipes and workflows for inspecting agent threads (tool calls, errors, regex search) without dumping the full thread into your context. Read this **before** running `devic agents threads get` on anything non-trivial.
+
 ## Installation
 
 ```bash
@@ -645,6 +649,8 @@ echo '{"city":"London"}' | devic tool-servers tools test <serverId> get_weather 
 ```
 
 ### Search for specific data in agent threads
+
+> For deeper diagnostics (tool call inspection, regex search, failure analysis), see [thread-diagnostics.md](./thread-diagnostics.md) — it has a thread JSON cheatsheet and a `jq` cookbook tuned for keeping the output out of your context window.
 
 ```bash
 # List threads without content (fast, metadata only)
