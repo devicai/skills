@@ -302,6 +302,105 @@ The cloned server will have "(Copy)" appended to its name.
 
 ---
 
+## Import Tool Server (via Dashboard UI)
+
+The Devic dashboard (`suntropy-ai-frontend`) exposes **three different import flows**. Each accepts a different JSON shape — they are NOT interchangeable with the raw `POST /api/v1/tool-servers` payload documented above. When the user says "I'm pasting JSON into the dashboard", always confirm which of these three flows they are using.
+
+### Flow 1 — Raw API (`POST /api/v1/tool-servers`)
+
+Flat shape, documented in the [Create Tool Server](#create-tool-server) section above:
+
+```json
+{
+  "name": "...",
+  "description": "...",
+  "url": "...",
+  "identifier": "...",
+  "enabled": true,
+  "toolDefinitions": [ ... ]
+}
+```
+
+Use this only for direct curl / SDK calls. The dashboard import modals do NOT accept this shape.
+
+### Flow 2 — "Import Tool Server" modal (root toolbar)
+
+Triggered by `ImportToolServerModal` → backend endpoint `POST tool-servers/import-openapi`. Accepts either an **OpenAPI 3.x specification** URL or an OpenAPI JSON file. The backend translates the OpenAPI spec into tool definitions automatically.
+
+Request body when importing from a file:
+
+```json
+{
+  "openApiSpec": { "openapi": "3.0.3", "info": { ... }, "paths": { ... } },
+  "save": true,
+  "withLogging": false
+}
+```
+
+Or from a URL:
+
+```json
+{
+  "openApiUrl": "https://api.example.com/openapi.json",
+  "save": true
+}
+```
+
+### Flow 3 — "Or paste JSON content" (inside the tool server editor)
+
+Available inside `MCPServerDetails` once a tool server is opened. Handled entirely **client-side** by `handleImport` — it populates the form locally, then the user clicks Save. This is the round-trip companion of the Export button in the same editor. Expected shape:
+
+```json
+{
+  "toolServer": {
+    "name": "...",
+    "description": "...",
+    "url": "https://your-api.example.com/base",
+    "identifier": "url-friendly-id",
+    "mcpType": false,
+    "thirdParty": false,
+    "imageUrl": "...",
+    "toolsSpecificationEndpoint": "...",
+    "authenticationConfig": { ... },
+    "mcpServerProperties": { "mode": "...", "slug": "..." }
+  },
+  "toolDefinition": {
+    "name": "...",
+    "description": "...",
+    "toolDefinitions": [
+      {
+        "type": "function",
+        "function": { "name": "...", "description": "...", "parameters": { ... } },
+        "endpoint": "/path/${pathParam}",
+        "method": "POST",
+        "pathParametersKeys": ["pathParam"],
+        "queryParametersKeys": [],
+        "bodyMode": "advanced",
+        "bodyJsonTemplate": "({ key: params.value })"
+      }
+    ],
+    "uiComponents": [ ... ]
+  }
+}
+```
+
+Validation performed by the dashboard (will reject the JSON otherwise):
+
+- `toolServer` must be present — otherwise error: *"Invalid import format: missing toolServer configuration"*.
+- `toolDefinition` is optional but typically required if you want tools, not just server metadata.
+- Both `toolServer.*` and `toolDefinition.*` fields are individually optional; the editor merges them onto the current state.
+
+### Picking the right flow
+
+| User says… | Use |
+|---|---|
+| "Create a tool server via curl/SDK" | Flow 1 (flat) |
+| "I have an OpenAPI spec / Swagger" | Flow 2 (OpenAPI wrapper) |
+| "I want to paste JSON inside the editor" / "Or paste JSON content" | Flow 3 (`{ toolServer, toolDefinition }` wrapper) |
+| "I exported a tool server and want to re-import" | Flow 3 (the Export button produces this exact shape) |
+
+---
+
 ## List Tools in Server
 
 Retrieves all tool definitions from a tool server.
