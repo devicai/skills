@@ -32,22 +32,22 @@ Use the generated URL as the connector target.
 
 ## Widget configuration fields
 
-Configure widgets in the SuntropyAI frontend under
-**Tools → MCP Editor → Widgets**. The new **Sandbox** section lets you set:
+Configure widgets in the SuntropyAI frontend under **Tools → MCP UIs**.
+Each UI has a **Config** panel with a Sandbox section split into Claude /
+ChatGPT tabs.
 
 | Field | Audience | Notes |
 |---|---|---|
-| `domain` | Both | Origin where the iframe is hosted (`_meta.ui.domain`). |
-| `csp.connectDomains` | Both | Hosts your widget JS can `fetch`/`WebSocket` to. |
-| `csp.resourceDomains` | Both | Hosts allowed for `<img>` / `<script>` / `<style>`. |
+| `domain` | ChatGPT only | **Leave empty for Claude.** The host serves the iframe from its own sandbox (`<hash>.claudemcpcontent.com`) and rejects any other origin under developer mode. Set only if you've registered a custom domain in the ChatGPT Apps directory. |
+| `csp.connectDomains` | Both | Hosts your widget JS can `fetch`/`WebSocket` to. Leave empty if your widget only talks to the host via `callServerTool`. |
+| `csp.resourceDomains` | Both | Hosts allowed for `<img>` / `<script>` / `<style>`. Leave empty for self-contained widgets. |
 | `csp.frameDomains` | Both | Hosts allowed in nested iframes. |
 | `permissions` | Claude only | `camera`, `microphone`, `geolocation`, `clipboard`. |
 | `visibility` | Both | `["model","app"]` by default. Pick `["app"]` to hide the tool from the model and only allow widget-initiated calls. |
 
-Claude requires both `domain` **and** at least one `csp.*` entry to be set.
-The editor shows a compatibility tag that reads **"Claude + ChatGPT ready"**
-once both conditions are met, otherwise **"ChatGPT-only (set domain + CSP for
-Claude)"**.
+For a self-contained widget that only uses `callServerTool` /
+`updateModelContext` (the recommended starting point), **every Sandbox field
+can stay empty** — the host's defaults apply.
 
 ## Talking to the host from widget JS
 
@@ -73,6 +73,9 @@ const ctx = window.devic.app.getHostContext?.();
 
 ## Troubleshooting
 
+* **`Invalid ui.domain format: expected "{hash}.claudemcpcontent.com"`** —
+  you have a `domain` set in the widget and Claude's developer mode is on.
+  Clear the **Domain** field in the editor and reload the connector.
 * **Widget renders blank in Claude but works in ChatGPT** — usually a CSP
   violation. Open Claude's iframe devtools and check the console; add the
   blocked origin to the corresponding `csp.*` list.
@@ -82,3 +85,6 @@ const ctx = window.devic.app.getHostContext?.();
   placeholder.
 * **Tool invisible to the model** — `visibility` is `["app"]`. Add `"model"`
   if the assistant should be able to trigger it.
+* **`callServerTool` works but the model doesn't react** — by design.
+  Widget-initiated tool calls return their result only to the iframe. To
+  surface the data to the model, follow up with `devic.app.updateModelContext`.
