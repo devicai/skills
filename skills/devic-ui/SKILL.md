@@ -428,6 +428,29 @@ import { ChatDrawer, ChatFile } from '@devicai/ui';
 />
 ```
 
+## Speech-to-Text (Voice Input)
+
+Add a microphone to the prompt box that records audio, transcribes it via the
+Devic `/whisper` endpoint, and fills the input for review before sending.
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    enableSpeechToText: true,
+    speechLanguage: 'es', // optional ISO-639-1 hint
+  }}
+/>
+```
+
+You can also drive transcription from a `customPromptBox` (via the
+`transcribeAudio` prop, which accepts a binary or a URL) or build a fully custom
+recorder with the `useSpeechRecording` hook.
+
+For the full guide — default UI flow, custom prompt box integration, the
+`useSpeechRecording` hook and direct client usage — see
+[speech-to-text.md](speech-to-text.md).
+
 ## Display Modes
 
 ChatDrawer supports two display modes via the `mode` prop:
@@ -541,10 +564,14 @@ The `CustomPromptBoxProps` interface:
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `sendMessage` | `(message: string, files?: File[]) => void` | Send a message (optionally with file attachments) |
+| `sendMessage` | `(message: string, files?: File[], meta?: { transcriptId?: string }) => void` | Send a message (optionally with file attachments). Pass `meta.transcriptId` to link a speech-to-text transcript |
+| `transcribeAudio` | `(audio: Blob \| string, options?: { language?, messageUid?, chatUid? }) => Promise<WhisperTranscriptionResponse>` | Transcribe a binary (Blob/File) or a download URL via `/whisper`. See [speech-to-text.md](speech-to-text.md) |
 | `stop` | `() => void` | Stop the current assistant processing |
 | `isLoading` | `boolean` | Whether the assistant is currently processing / polling |
 | `newConversation` | `() => void` | Clear the current conversation and start a new one |
+| `references` | `AIReference[]` | Active references created by AIElementWrapper components |
+| `removeReference` | `(id: string) => void` | Remove a single reference by id |
+| `clearReferences` | `() => void` | Clear all references |
 
 ### Custom Send Button
 
@@ -884,11 +911,15 @@ import type {
   // Hook types
   UseDevicChatOptions,
   UseDevicChatResult,
+  UseSpeechRecordingOptions,
+  UseSpeechRecordingResult,
+  SpeechRecordingStatus,
 
   // API types
   RealtimeChatHistory,  // Includes status (with 'handed_off') and handedOffSubThreadId
   RealtimeStatus,       // 'processing' | 'completed' | 'error' | 'waiting_for_tool_response' | 'handed_off'
   AssistantSpecialization,
+  WhisperTranscriptionResponse,
 
   // Feedback types
   FeedbackSubmission,
@@ -906,7 +937,7 @@ import type {
 } from '@devicai/ui';
 
 // Import the AgentThreadState enum (value export)
-import { AgentThreadState, segmentToolCalls } from '@devicai/ui';
+import { AgentThreadState, segmentToolCalls, useSpeechRecording } from '@devicai/ui';
 
 // Use types in your code
 const chatOptions: ChatDrawerOptions = {
@@ -989,6 +1020,8 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `enableFileUploads` | `boolean` | `false` | Enable file attachments |
 | `allowedFileTypes` | `AllowedFileTypes` | — | Filter by file type (images, documents, audio, video) |
 | `maxFileSize` | `number` | `10485760` | Max file size in bytes (10MB) |
+| `enableSpeechToText` | `boolean` | `false` | Show a microphone in the prompt box for voice input via `/whisper`. See [speech-to-text.md](speech-to-text.md) |
+| `speechLanguage` | `string` | — | ISO-639-1 language hint for speech-to-text (e.g. `'es'`, `'en'`) |
 | `color` | `string` | `'#1890ff'` | Primary theme color |
 | `backgroundColor` | `string` | — | Drawer background color |
 | `textColor` | `string` | — | Text color |
@@ -1007,7 +1040,7 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `showFeedback` | `boolean` | `true` | Show thumbs up/down feedback buttons on assistant messages |
 | `handoffWidgetRenderer` | `(props: { thread, agent, elapsedSeconds, isTerminal }) => ReactNode` | — | Custom renderer for the HandoffSubagentWidget (replaces default UI) |
 | `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
-| `customPromptBox` | `(props: CustomPromptBoxProps) => ReactNode` | — | Replace the default input area with a custom component. Receives `sendMessage`, `stop`, `isLoading`, and `newConversation` |
+| `customPromptBox` | `(props: CustomPromptBoxProps) => ReactNode` | — | Replace the default input area with a custom component. Receives `sendMessage`, `transcribeAudio`, `stop`, `isLoading`, `newConversation` and reference helpers |
 
 ## Message Feedback
 
