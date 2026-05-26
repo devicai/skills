@@ -212,7 +212,19 @@ Collect user feedback on AI responses from both assistants and agents.
 
 For detailed documentation, see [feedback.md](feedback.md).
 
-### 6. Built-in Tools Reference
+### 6. Whisper API (Speech-to-Text)
+
+Transcribe audio to text using OpenAI Whisper with Devic's own OpenAI key.
+
+- Transcribe an audio binary (multipart) or a download URL
+- Optional language hint, message and chat linkage
+- Returns a `transcriptId` to attach to the resulting assistant message
+
+**Base path:** `/api/v1/whisper`
+
+For detailed documentation, see [whisper.md](whisper.md).
+
+### 7. Built-in Tools Reference
 
 List of all built-in tool groups with their UIDs, ready to use in `availableToolsGroupsUids`.
 
