@@ -52,6 +52,89 @@ dropped so a fresh message isn't attributed to the previous transcription.
 |--------|------|---------|-------------|
 | `enableSpeechToText` | `boolean` | `false` | Show the microphone control in the prompt box |
 | `speechLanguage` | `string` | — | ISO-639-1 language hint passed to Whisper (e.g. `'es'`, `'en'`) |
+| `speechAutoStop` | `boolean` | `true` | Auto-confirm the recording after a short silence, once speech was detected (see [Auto-stop](#auto-stop-on-silence)). Set `false` to require pressing confirm |
+| `speechAutoStopCountdownMs` | `number` | `1000` | Duration of the auto-stop circular countdown around the confirm button |
+| `speechHandoff` | `boolean` | `false` | Enable the hands-free conversation loop (see [Hands-free mode](#hands-free-handoff-mode)). Requires `@devicai/ui` ≥ 0.20.0 |
+| `speechHandoffSendDelayMs` | `number` | `1000` | In hands-free mode, the delay from the transcription being ready to the message being auto-sent (the cancellable pending window). Requires ≥ 0.21.0 |
+
+## Auto-stop on silence
+
+By default (`speechAutoStop: true`) the recording **stops and transcribes by
+itself** once the user goes quiet — they don't have to press confirm. The
+behaviour is robust to ambient noise:
+
+- It only arms **after real speech is detected** (a quiet room never triggers
+  it on its own).
+- The silence threshold is **adaptive**: it's a fraction of the loudest voice
+  heard in the recording, so a loud speaker and a quiet one calibrate
+  differently.
+- When silence is detected, an **inverted circular countdown** drains around
+  the confirm button (`speechAutoStopCountdownMs`, default 1s). Talking again
+  cancels it; if it completes, the audio is transcribed.
+
+Set `speechAutoStop: false` to require an explicit confirm press instead.
+
+## Hands-free (handoff) mode
+
+> Requires `@devicai/ui` ≥ 0.20.0.
+
+`speechHandoff: true` turns the mic into a **hands-free conversation loop**: the
+user speaks, the message is sent automatically, and once the assistant replies
+the mic re-opens for the next turn — no clicking between turns.
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    enableSpeechToText: true,
+    speechHandoff: true, // opt-in; the mic starts the loop
+  }}
+/>
+```
+
+### The loop
+
+```
+[listen] --silence/auto-stop--> [transcribe] --empty text--> EXIT handoff
+                                     | (non-empty)
+                                     v
+                  [pending 1s + animation] --click/keystroke--> EXIT (text stays in input)
+                                     | (no interaction)
+                                     v
+                        [auto-send] --> [waiting for reply] --reply done--> back to [listen]
+```
+
+1. Pressing the **mic** enters the loop (the mic *is* the entry — there's no
+   separate toggle). A **"Hands-free on"** status bar appears with a Stop (✕).
+2. The user talks; the silence auto-stop transcribes the audio.
+3. A short **pending countdown** (its own draining-ring animation around a send
+   icon, with a preview of the text) precedes sending. Its length is
+   `speechHandoffSendDelayMs` (default 1s, ≥ 0.21.0).
+4. If the user **clicks or types** during that countdown, the auto-send is
+   cancelled and the loop exits — the text stays in the input for manual edit.
+5. Otherwise the message is **sent automatically**; the loop stays active
+   ("Hands-free · waiting for reply").
+6. When the assistant finishes, **listening re-activates** for the next turn.
+
+### How the loop ends
+
+- A **silent / empty-transcript turn** (the user said nothing meaningful).
+- **Inactivity**: the mic re-opens but no speech is detected within ~6s.
+- A **click or keystroke** during the pending countdown.
+- The user presses **Stop (✕)** in the hands-free status bar.
+
+### Notes
+
+- Handoff is built on top of auto-stop, so `speechAutoStop` must stay enabled
+  (it is by default).
+- The loop drives the **built-in** prompt box. With a `customPromptBox` you own
+  the UI — replicate the loop yourself using `useSpeechRecording` (its
+  `onAutoStop` callback and `speechDetected` flag) plus `isLoading`.
+- **Styling:** the hands-free bar and pending panel ship in
+  `@devicai/ui/styles.css`. If the bar renders unstyled (plain text, no
+  background), the app is loading an **older `styles.css` than its JS** — make
+  sure the package is on ≥ 0.20.0, the `import '@devicai/ui/styles.css'` is
+  present, and the bundler cache is cleared (e.g. Vite `node_modules/.vite`).
 
 ## Custom prompt box
 
@@ -172,6 +255,9 @@ function MicButton({ apiKey }: { apiKey: string }) {
 | `levels` | `number[]` | Normalized amplitude per bar (0..1) for an equalizer, updated live |
 | `durationMs` | `number` | Elapsed recording time in ms (excludes paused time) |
 | `error` | `string \| null` | Last error (e.g. permission denied) |
+| `isAutoStopping` | `boolean` | `true` while the silence auto-stop countdown is running |
+| `autoStopProgress` | `number` | Auto-stop countdown progress, `1`→`0` (for an inverted ring) |
+| `speechDetected` | `boolean` | `true` once a real voice peak was detected in the current recording |
 | `start` | `() => Promise<void>` | Request mic access and start recording |
 | `pause` | `() => void` | Pause an active recording |
 | `resume` | `() => void` | Resume a paused recording |
@@ -179,7 +265,21 @@ function MicButton({ apiKey }: { apiKey: string }) {
 | `cancel` | `() => void` | Stop and discard the recording |
 
 `useSpeechRecording(options)` accepts `{ bars?: number; mimeType?: string }`
-(`bars` defaults to 5, `mimeType` is auto-selected from supported types).
+(`bars` defaults to 5, `mimeType` is auto-selected from supported types), plus
+the silence **auto-stop** controls:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `autoStop` | `boolean` | `true` | Auto-stop after silence once speech is detected |
+| `autoStopSilenceMs` | `number` | `1000` | Continuous silence before the countdown starts |
+| `autoStopCountdownMs` | `number` | `1000` | Length of the countdown before it fires |
+| `autoStopSilenceRatio` | `number` | `0.1` | Silence threshold as a fraction of the loudest voice (adaptive) |
+| `autoStopSilenceLevel` | `number` | `0.02` | Absolute floor for the adaptive silence threshold |
+| `autoStopSpeechLevel` | `number` | `0.12` | Absolute floor a peak must clear to count as speech |
+| `onAutoStop` | `() => void` | — | Fired when the countdown completes (you decide what "stop" means) |
+
+`onAutoStop` + `speechDetected` are the hooks you need to build a custom
+hands-free loop on top of a `customPromptBox`.
 
 ## Direct client usage
 

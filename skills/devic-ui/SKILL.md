@@ -443,12 +443,18 @@ Devic `/whisper` endpoint, and fills the input for review before sending.
 />
 ```
 
+By default the recording **auto-stops on silence** (`speechAutoStop`) and
+transcribes itself. You can also enable a **hands-free loop** (`speechHandoff`,
+≥ 0.20.0): the mic records, auto-sends after a short cancellable countdown
+(`speechHandoffSendDelayMs`), and re-opens once the assistant replies — until a
+silent turn or any interaction ends it.
+
 You can also drive transcription from a `customPromptBox` (via the
 `transcribeAudio` prop, which accepts a binary or a URL) or build a fully custom
 recorder with the `useSpeechRecording` hook.
 
-For the full guide — default UI flow, custom prompt box integration, the
-`useSpeechRecording` hook and direct client usage — see
+For the full guide — default UI flow, auto-stop, hands-free mode, custom prompt
+box integration, the `useSpeechRecording` hook and direct client usage — see
 [speech-to-text.md](speech-to-text.md).
 
 ## Display Modes
@@ -1022,6 +1028,10 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `maxFileSize` | `number` | `10485760` | Max file size in bytes (10MB) |
 | `enableSpeechToText` | `boolean` | `false` | Show a microphone in the prompt box for voice input via `/whisper`. See [speech-to-text.md](speech-to-text.md) |
 | `speechLanguage` | `string` | — | ISO-639-1 language hint for speech-to-text (e.g. `'es'`, `'en'`) |
+| `speechAutoStop` | `boolean` | `true` | Auto-confirm the recording after a short silence (once speech is detected) |
+| `speechAutoStopCountdownMs` | `number` | `1000` | Duration of the auto-stop circular countdown |
+| `speechHandoff` | `boolean` | `false` | Hands-free conversation loop (mic → auto-send → re-listen). ≥ 0.20.0. See [speech-to-text.md](speech-to-text.md#hands-free-handoff-mode) |
+| `speechHandoffSendDelayMs` | `number` | `1000` | Hands-free: delay from transcription ready to auto-send. ≥ 0.21.0 |
 | `color` | `string` | `'#1890ff'` | Primary theme color |
 | `backgroundColor` | `string` | — | Drawer background color |
 | `textColor` | `string` | — | Text color |
