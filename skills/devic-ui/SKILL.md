@@ -88,21 +88,45 @@ For SaaS applications with multiple tenants:
 ```tsx
 <DevicProvider
   apiKey="your-api-key"
-  tenantId="global-tenant-id"
+  tenantId="acme-corp"                                  // the customer/organization
   tenantMetadata={{ organizationId: 'org-123' }}
+  subtenantId="user-456"                                // the end user inside the tenant
+  subtenantMetadata={{ id: 'user-456', name: 'Jane', email: 'jane@acme.com' }}
 >
   <ChatDrawer
     assistantId="support-assistant"
-    tenantId="specific-tenant-override"  // Overrides provider
-    tenantMetadata={{
-      userId: 'user-456',
-      plan: 'enterprise'
-    }}
+    tenantId="acme-corp"            // overrides the provider value
+    subtenantId="user-456"          // overrides the provider value
+    showUsageBar="onDemand"         // show a "Usage" toggle above the input
   />
 </DevicProvider>
 ```
 
-The `tenantId` you pass is forwarded to the Devic API on every message and **auto-registers the tenant** on the platform: the conversation is attributed to it and its cost/usage roll up under that tenant in the Devic dashboard (and the Tenants API). The end user inside the tenant (the **subtenant**) is derived from `tenantMetadata.userId` (or `tenantMetadata.subtenantMetadata.id`), so cost and usage limits can be tracked per user. See the `devic-api` skill's tenants reference for the management/usage/limits endpoints and the `429 TENANT_LIMIT_EXCEEDED` response that fires when a tenant/subtenant hits a configured usage limit.
+The `tenantId` / `subtenantId` you pass are forwarded to the Devic API on every message and **auto-register** the tenant and subtenant on the platform: the conversation is attributed to them and cost/usage roll up under that tenant (and per subtenant) in the Devic dashboard and Tenants API. `subtenantId` is sent explicitly; when omitted it falls back to `subtenantMetadata.id` (or the legacy `tenantMetadata.userId`). Both `tenantId`/`subtenantId` and their `*Metadata` can be set globally on the provider and overridden per `ChatDrawer`. See the `devic-api` skill's tenants reference for the management/usage/limits endpoints.
+
+### Usage bar
+
+When the tenant/subtenant has usage limits configured, `ChatDrawer` can render a usage bar above the input, fed by the read-only `GET /api/v1/tenant-usage` endpoint (renders nothing when there are no limits):
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `showUsageBar` | `boolean \| 'onDemand'` | `false` | `true` = always visible; `'onDemand'` = a small "Usage" toggle reveals it; `false` = hidden |
+| `usageBarMetric` | `'tokens' \| 'cost'` | — | Restrict the bar to a single metric (default: all applicable rules) |
+| `usageBarDisplay` | `UsageBarDisplay` | `{ showPercent: true, showAllRules: true }` | `{ showValues?, showPercent?, showAllRules? }` — absolute values, %, and whether to show every applicable rule or only the most restrictive |
+| `customUsageBar` | `(data: UsageBarData) => ReactNode` | — | Render your own bar in the same slot; receives `{ rules, tierId, loading }`. Providing it is enough to show the bar |
+
+The `UsageBar` and `LimitBanner` components are also exported standalone.
+
+### Handling usage-limit blocks (429)
+
+When a tenant/subtenant hits a configured limit, the message is blocked **before** the LLM call. `ChatDrawer` shows a built-in **limit banner** and disables the input while the limit is active (both sync `429 TENANT_LIMIT_EXCEEDED` and async `status: "limit_exceeded"` are handled transparently):
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `hideLimitBanner` | `boolean` | Suppress the built-in banner (e.g. to render your own) |
+| `limitBannerRenderer` | `(limit: TenantLimitExceeded) => ReactNode` | Custom banner. The input stays disabled regardless while the limit is active |
+
+`useDevicChat()` exposes the live block as `limitExceeded: TenantLimitExceeded | null` (`{ message, blockingRule, current, limit, resetsAt }`), so you can build your own UI. The client also offers read-only `getTenantUsage(tenantId, subtenantId?)` and `getTenantUsageHistory(tenantId, options?)`. Exported types: `TenantLimitExceeded`, `TenantUsage`, `TenantUsageRule`, `TenantUsageHistoryRow`, `UsageBarDisplay`, `UsageBarData`, `LimitBannerProps`.
 
 ## Client-Side Tools (Model Interface Protocol)
 
@@ -986,6 +1010,14 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `modelInterfaceTools` | `ModelInterfaceTool[]` | — | Client-side tools for model interface protocol |
 | `tenantId` | `string` | — | Tenant ID (overrides provider) |
 | `tenantMetadata` | `Record<string, any>` | — | Tenant metadata (overrides provider) |
+| `subtenantId` | `string` | — | Subtenant (end-user) ID (overrides provider). Falls back to `subtenantMetadata.id` / `tenantMetadata.userId` |
+| `subtenantMetadata` | `Record<string, any>` | — | Subtenant metadata `{ id, name, email }` (overrides provider) |
+| `showUsageBar` | `boolean \| 'onDemand'` | `false` | Usage bar above the input (`true` / `'onDemand'` toggle). Needs `tenantId` + configured limits |
+| `usageBarMetric` | `'tokens' \| 'cost'` | — | Restrict the usage bar to one metric |
+| `usageBarDisplay` | `UsageBarDisplay` | `{ showPercent, showAllRules }` | `{ showValues?, showPercent?, showAllRules? }` |
+| `customUsageBar` | `(data: UsageBarData) => ReactNode` | — | Render a custom usage bar (receives `{ rules, tierId, loading }`) |
+| `hideLimitBanner` | `boolean` | `false` | Suppress the built-in usage-limit banner |
+| `limitBannerRenderer` | `(limit: TenantLimitExceeded) => ReactNode` | — | Custom usage-limit banner (input stays disabled while active) |
 | `apiKey` | `string` | — | API key (overrides provider) |
 | `baseUrl` | `string` | — | Base URL (overrides provider) |
 | `isOpen` | `boolean` | — | Controlled open state (drawer mode only) |
