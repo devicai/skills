@@ -334,6 +334,8 @@ POST /api/v1/assistants/:identifier/messages
 | `model` | string | No | Override the model (e.g., "gpt-4", "claude-3-opus") |
 | `tags` | string[] | No | Tags to associate with this chat |
 | `metadata` | object | No | Custom metadata to store with the chat |
+| `tenantId` | string | No | Tenant the conversation belongs to (multi-tenant environments). Auto-registers the tenant on first use and attributes cost/usage to it. See [tenants.md](tenants.md). |
+| `subtenantId` | string | No | End user/entity inside the tenant. When omitted it is derived from `metadata.subtenantMetadata.id` or the legacy `metadata.userId`. Used for per-subtenant cost attribution and usage limits. |
 
 ### Synchronous Mode (Default)
 
@@ -410,6 +412,28 @@ curl -X GET "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-
 | 400 | Invalid input data, provider not configured, or model not supported |
 | 404 | Assistant specialization not found |
 | 409 | Chat is currently processing (only when `inputDelayMs` is configured and chat status is `processing`) |
+| 429 | Tenant usage limit exceeded — `error: "TENANT_LIMIT_EXCEEDED"` (see below) |
+
+#### 429 — Tenant usage limit exceeded
+
+When the conversation's `tenantId`/`subtenantId` has a configured usage limit that is already consumed, the message is blocked **before** the LLM call and the endpoint returns HTTP `429` with a structured body and a `Retry-After` header:
+
+```json
+{
+  "statusCode": 429,
+  "error": "TENANT_LIMIT_EXCEEDED",
+  "message": "Usage limit reached: 115K / 100K tokens per month",
+  "details": {
+    "blockingRule": { "scope": "tenant", "metric": "tokens", "windowUnit": "month", "windowEvery": 1, "limit": 100000 },
+    "current": 115000,
+    "limit": 100000,
+    "resetsAt": 1718668800000
+  },
+  "retryAfter": 86400
+}
+```
+
+In **async mode** the request still returns `200` with a `chatUid`; the block surfaces when you poll the realtime endpoint as `status: "limit_exceeded"` with a `limitExceeded` object (same `blockingRule`/`current`/`limit`/`resetsAt` fields). See [tenants.md](tenants.md) for the usage-limit model.
 
 ---
 

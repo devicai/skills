@@ -1,6 +1,6 @@
 ---
 name: devic-api
-description: Devic AI Platform API reference for assistants, agents, and tool servers. Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
+description: Devic AI Platform API reference for assistants, agents, tool servers, and tenants (multi-tenant cost & usage limits). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
 ---
 
 # Devic API
@@ -224,7 +224,22 @@ Transcribe audio to text using OpenAI Whisper with Devic's own OpenAI key.
 
 For detailed documentation, see [whisper.md](whisper.md).
 
-### 7. Built-in Tools Reference
+### 7. Tenants API
+
+Manage the tenants and subtenants of your account for multi-tenant products, read aggregated cost/usage, and enforce usage limits (token/cost caps) with reusable tiers (plans).
+
+- Auto-register tenants/subtenants by passing `tenantId`/`subtenantId` on messages and threads
+- List/update/delete tenants and subtenants
+- Read per-tenant cost time series and live chat/thread stats
+- Read usage limits, current consumption and durable history (read-only, devic-ui preset)
+- Reset counters and change tier from billing/checkout webhooks (full keys only)
+- Usage limits block execution with HTTP `429 TENANT_LIMIT_EXCEEDED`
+
+**Base paths:** `/api/v1/tenants` · `/api/v1/tenant-usage` · `/api/v1/tenant-admin`
+
+For detailed documentation, see [tenants.md](tenants.md).
+
+### 8. Built-in Tools Reference
 
 List of all built-in tool groups with their UIDs, ready to use in `availableToolsGroupsUids`.
 
@@ -264,7 +279,7 @@ API rate limits are applied per API key. Contact support for rate limit details 
 | 400 | Bad Request - Invalid input data |
 | 401 | Unauthorized - Invalid or missing API key |
 | 404 | Not Found - Resource does not exist |
-| 429 | Too Many Requests - Rate limit exceeded |
+| 429 | Too Many Requests - Rate limit, or tenant usage limit (`TENANT_LIMIT_EXCEEDED`, see [tenants.md](tenants.md)) |
 | 500 | Internal Server Error |
 
 ## Quick Start Examples
