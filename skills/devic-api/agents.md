@@ -75,6 +75,7 @@ Threads can be in one of the following states:
 | `CANCELLED` | Thread was cancelled |
 | `HANDED_OFF` | Thread is waiting for one or more subagent threads to complete |
 | `TERMINATED` | Thread was terminated by the user |
+| `LIMIT_EXCEEDED` | Thread blocked by a tenant usage limit before execution (terminal — not resumed by the cron). See [tenants.md](tenants.md) |
 
 ---
 
@@ -457,6 +458,8 @@ POST /api/v1/agents/:agentId/threads
 | `message` | string | Yes | Initial message/task for the agent |
 | `tags` | string[] | No | Tags to associate with the thread |
 | `metadata` | object | No | Custom metadata for the thread |
+| `tenantId` | string | No | Tenant the thread belongs to (multi-tenant environments). Auto-registers the tenant on first use and attributes cost/usage to it. See [tenants.md](tenants.md). |
+| `subtenantId` | string | No | End user/entity inside the tenant. When omitted it is derived from `metadata.subtenantMetadata.id` or the legacy `metadata.userId`. Used for per-subtenant cost attribution and usage limits. |
 
 ### Example Request
 
@@ -466,7 +469,9 @@ curl -X POST "https://api.devic.ai/api/v1/agents/agent-123/threads" \
   -H "Content-Type: application/json" \
   -d '{
     "message": "Analyze the Q4 sales report and create a summary",
-    "tags": ["sales", "quarterly-report"]
+    "tags": ["sales", "quarterly-report"],
+    "tenantId": "acme-corp",
+    "subtenantId": "user_67890"
   }'
 ```
 
@@ -484,6 +489,15 @@ curl -X POST "https://api.devic.ai/api/v1/agents/agent-123/threads" \
   }
 }
 ```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | Agent not found |
+| 429 | Tenant usage limit exceeded — `error: "TENANT_LIMIT_EXCEEDED"` (see below) |
+
+When the thread's `tenantId`/`subtenantId` has a configured usage limit that is already consumed, thread creation is blocked **before** the LLM call and returns HTTP `429` with a structured body (`details.blockingRule`/`current`/`limit`/`resetsAt`) plus a `Retry-After` header — identical in shape to the assistant 429 documented in [assistants.md](assistants.md). The blocked thread is also persisted with state `LIMIT_EXCEEDED` (terminal; the resumption cron does not retry it) so it is visible in the thread list. See [tenants.md](tenants.md) for the usage-limit model.
 
 ---
 

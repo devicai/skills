@@ -102,6 +102,8 @@ For SaaS applications with multiple tenants:
 </DevicProvider>
 ```
 
+The `tenantId` you pass is forwarded to the Devic API on every message and **auto-registers the tenant** on the platform: the conversation is attributed to it and its cost/usage roll up under that tenant in the Devic dashboard (and the Tenants API). The end user inside the tenant (the **subtenant**) is derived from `tenantMetadata.userId` (or `tenantMetadata.subtenantMetadata.id`), so cost and usage limits can be tracked per user. See the `devic-api` skill's tenants reference for the management/usage/limits endpoints and the `429 TENANT_LIMIT_EXCEEDED` response that fires when a tenant/subtenant hits a configured usage limit.
+
 ## Client-Side Tools (Model Interface Protocol)
 
 Enable the assistant to call functions in your application:
