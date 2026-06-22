@@ -104,6 +104,23 @@ For SaaS applications with multiple tenants:
 
 The `tenantId` / `subtenantId` you pass are forwarded to the Devic API on every message and **auto-register** the tenant and subtenant on the platform: the conversation is attributed to them and cost/usage roll up under that tenant (and per subtenant) in the Devic dashboard and Tenants API. `subtenantId` is sent explicitly; when omitted it falls back to `subtenantMetadata.id` (or the legacy `tenantMetadata.userId`). Both `tenantId`/`subtenantId` and their `*Metadata` can be set globally on the provider and overridden per `ChatDrawer`. See the `devic-api` skill's tenants reference for the management/usage/limits endpoints.
 
+### Conversation list scoping
+
+The conversation selector in `ChatDrawer` filters the listed conversations by the resolved scope. When `subtenantId` is set (via provider or `ChatDrawer` prop), each end user sees **only their own** conversations rather than every conversation of the tenant; with only `tenantId` set, the list is scoped to the tenant. Resolution follows the usual precedence (explicit `ChatDrawer` prop overrides the `DevicProvider` value).
+
+Using the client directly, `listConversations` accepts both scopes:
+
+```tsx
+const { histories, total } = await client.listConversations('assistant-id', {
+  tenantId: 'acme-corp',
+  subtenantId: 'user-456', // optional — omit to list at the tenant level
+  offset: 0,
+  limit: 20,
+});
+```
+
+Backed by the `subtenantId` query param on `GET /api/v1/assistants/:id/chats` (matched against the canonical `metadata.subtenantId`). Sending it against an older backend is harmless — unknown query params are ignored, so the list simply isn't subtenant-filtered.
+
 ### Usage bar
 
 When the tenant/subtenant has usage limits configured, `ChatDrawer` can render a usage bar above the input, fed by the read-only `GET /api/v1/tenant-usage` endpoint (renders nothing when there are no limits):
