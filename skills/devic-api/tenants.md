@@ -30,6 +30,22 @@ curl -X POST "https://api.devic.ai/api/v1/agents/agent-123/threads" \
 
 The tenant is registered (auto `touch`) **before** the LLM call, so it appears even if the model call later fails. See [assistants.md](assistants.md) and [agents.md](agents.md) for the full message/thread bodies and the `429` shape.
 
+You can enrich the auto-registered records by sending display metadata alongside the ids:
+
+```jsonc
+{
+  "message": "Hi",
+  "tenantId": "acme-corp",
+  "subtenantId": "user_67890",
+  "metadata": {
+    "tenantMetadata":    { "name": "Acme Corp", "email": "billing@acme-corp.com", "imageUrl": "https://acme-corp.com/logo.png" },
+    "subtenantMetadata": { "id": "user_67890", "name": "Jane Doe", "email": "jane@acme-corp.com", "imageUrl": "https://…/jane.png" }
+  }
+}
+```
+
+`tenantMetadata` enriches the tenant (name/email fill-only; an explicit `imageUrl` is pinned manual). `subtenantMetadata` enriches the subtenant (`name`→`displayName`, `email`, `imageUrl`) and is refreshed on every request unless the field was pinned manually via PATCH. All fields are optional.
+
 ## Endpoint groups & API-key scope
 
 The Tenants API is split into three URL subtrees so you can grant fine-grained access per API key (configured in the per-key endpoint-scope picker / api-gateway allowlist):
@@ -163,13 +179,30 @@ Returns an array of cost documents (`date`/`month`, totals, and `byAgent`/`byAss
 GET /api/v1/tenants/:tenantId/subtenants
 ```
 
-Query: `search`, `limit`, `skip`. Returns `{ items, total }` of subtenants (`subtenantId`, `displayName`, `email`, `emailDomain`, `source`, `firstSeenAt`, `lastSeenAt`).
+Query: `search`, `limit`, `skip`. Returns `{ items, total }` of subtenants (`subtenantId`, `displayName`, `email`, `emailDomain`, `imageUrl`, `source`, `firstSeenAt`, `lastSeenAt`).
+
+`imageUrl` is the subtenant's avatar/logo. Unlike the tenant logo it is **never** auto-derived from a domain favicon — it is only populated from explicit `metadata.subtenantMetadata.imageUrl` (or `logoUrl`, or the flat `metadata.userImageUrl`) seen on a request, or set manually via the PATCH below. When absent, render initials of `displayName` (falling back to `subtenantId`).
 
 ## Get Subtenant
 
 ```
 GET /api/v1/tenants/:tenantId/subtenants/:subtenantId
 ```
+
+## Update Subtenant
+
+```
+PATCH /api/v1/tenants/:tenantId/subtenants/:subtenantId
+```
+
+### Request Body
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `displayName` | string | Human-friendly subtenant name |
+| `imageUrl` | string | Avatar / logo URL |
+
+Editing either field **pins it as manual** (`displayNameSource` / `imageSource = manual`), so subsequent auto-registration from `subtenantMetadata` no longer overwrites it — same "manual wins" semantics as the tenant. Returns the updated subtenant object.
 
 ---
 
