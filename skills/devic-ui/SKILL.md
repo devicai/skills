@@ -89,9 +89,9 @@ For SaaS applications with multiple tenants:
 <DevicProvider
   apiKey="your-api-key"
   tenantId="acme-corp"                                  // the customer/organization
-  tenantMetadata={{ organizationId: 'org-123' }}
+  tenantMetadata={{ name: 'Acme Corp', email: 'billing@acme.com', imageUrl: 'https://acme.com/logo.png' }}
   subtenantId="user-456"                                // the end user inside the tenant
-  subtenantMetadata={{ id: 'user-456', name: 'Jane', email: 'jane@acme.com' }}
+  subtenantMetadata={{ id: 'user-456', name: 'Jane', email: 'jane@acme.com', imageUrl: 'https://…/jane.png' }}
 >
   <ChatDrawer
     assistantId="support-assistant"
@@ -103,6 +103,8 @@ For SaaS applications with multiple tenants:
 ```
 
 The `tenantId` / `subtenantId` you pass are forwarded to the Devic API on every message and **auto-register** the tenant and subtenant on the platform: the conversation is attributed to them and cost/usage roll up under that tenant (and per subtenant) in the Devic dashboard and Tenants API. `subtenantId` is sent explicitly; when omitted it falls back to `subtenantMetadata.id` (or the legacy `tenantMetadata.userId`). Both `tenantId`/`subtenantId` and their `*Metadata` can be set globally on the provider and overridden per `ChatDrawer`. See the `devic-api` skill's tenants reference for the management/usage/limits endpoints.
+
+`tenantMetadata` and `subtenantMetadata` are typed (exported **`TenantMetadata`** and **`SubtenantMetadata`**, since `0.29.0`): they give first-class fields — `name`/`displayName`, `email`, `imageUrl` (and `id` for subtenants) — used to enrich the tenant/subtenant display record (e.g. the avatar shown in the Devic Tenants UI), while still allowing any extra integrator-defined key (`[key: string]: any`). Sending these is optional; the avatar falls back to the subtenant's initials when no `imageUrl` is provided.
 
 ### Conversation list scoping
 
@@ -1032,9 +1034,9 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `enabledTools` | `string[]` | — | Tools enabled from assistant's configured tool groups |
 | `modelInterfaceTools` | `ModelInterfaceTool[]` | — | Client-side tools for model interface protocol |
 | `tenantId` | `string` | — | Tenant ID (overrides provider) |
-| `tenantMetadata` | `Record<string, any>` | — | Tenant metadata (overrides provider) |
+| `tenantMetadata` | `TenantMetadata` | — | Tenant metadata `{ name, email, imageUrl, … }` (overrides provider) |
 | `subtenantId` | `string` | — | Subtenant (end-user) ID (overrides provider). Falls back to `subtenantMetadata.id` / `tenantMetadata.userId` |
-| `subtenantMetadata` | `Record<string, any>` | — | Subtenant metadata `{ id, name, email }` (overrides provider) |
+| `subtenantMetadata` | `SubtenantMetadata` | — | Subtenant metadata `{ id, name, email, imageUrl }` (overrides provider) |
 | `showUsageBar` | `boolean \| 'onDemand'` | `false` | Usage bar above the input (`true` / `'onDemand'` toggle). Needs `tenantId` + configured limits |
 | `usageBarMetric` | `'tokens' \| 'cost'` | — | Restrict the usage bar to one metric |
 | `usageBarDisplay` | `UsageBarDisplay` | `{ showPercent, showAllRules }` | `{ showValues?, showPercent?, showAllRules? }` |
@@ -1466,7 +1468,7 @@ function CustomCommandBar() {
 | `apiKey` | `string` | — | API key (overrides provider) |
 | `baseUrl` | `string` | — | Base URL (overrides provider) |
 | `tenantId` | `string` | — | Tenant ID (overrides provider) |
-| `tenantMetadata` | `Record<string, any>` | — | Tenant metadata |
+| `tenantMetadata` | `TenantMetadata` | — | Tenant metadata |
 | `options` | `AICommandBarOptions` | — | Display and behavior options |
 | `isVisible` | `boolean` | — | Controlled visibility state |
 | `onVisibilityChange` | `(visible: boolean) => void` | — | Fires when visibility changes |
@@ -1773,7 +1775,7 @@ function CustomGenerateButton() {
 | `apiKey` | `string` | — | API key (overrides provider) |
 | `baseUrl` | `string` | — | Base URL (overrides provider) |
 | `tenantId` | `string` | — | Tenant ID (overrides provider) |
-| `tenantMetadata` | `Record<string, any>` | — | Tenant metadata |
+| `tenantMetadata` | `TenantMetadata` | — | Tenant metadata |
 | `options` | `AIGenerationButtonOptions` | — | Display and behavior options |
 | `modelInterfaceTools` | `ModelInterfaceTool[]` | — | Client-side tools |
 | `onResponse` | `(result: GenerationResult) => void` | — | Fires on successful generation |
