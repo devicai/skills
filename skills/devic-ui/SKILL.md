@@ -577,12 +577,61 @@ Links, inline code and blockquotes are styled to stay legible on the colored
 user bubble, and single-line messages keep their original bubble height
 (outer paragraph margins are collapsed).
 
-There is no flag to opt out per role: if your users paste content with stray
-markdown characters (`*`, `_`, `#`, `1.`) be aware it will be formatted. Use a
-`customPromptBox`/your own bubble rendering if you need raw-text user messages.
+If your users paste content with stray markdown characters (`*`, `_`, `#`,
+`1.`) be aware it will be formatted. To opt out — or to swap in your own
+renderer (a different markdown library, plain text, a rich component) — pass a
+[custom bubble renderer](#custom-message-bubble-renderers) per role, or use a
+`customPromptBox` for the input side.
 
 Tables get a horizontally scrollable wrapper (`.markdown-table`); the markdown
 overrides are applied identically for both roles.
+
+### Custom message bubble renderers
+
+Inject a component that **replaces the built-in markdown renderer** for the
+text content of a bubble, per role (≥ 0.31.0):
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `userMessageRenderer` | `MessageBubbleRenderer` | Replaces markdown for **user** bubbles |
+| `assistantMessageRenderer` | `MessageBubbleRenderer` | Replaces markdown for **assistant** bubbles |
+
+```tsx
+import { ChatDrawer, MessageBubbleRendererProps } from '@devicai/ui';
+
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    // Raw, unformatted user text (opt out of markdown for user messages)
+    userMessageRenderer: ({ content }) => <span>{content}</span>,
+    // Your own renderer for assistant messages
+    assistantMessageRenderer: ({ content, message }) => (
+      <MyRichMarkdown text={content} raw={message} />
+    ),
+  }}
+/>
+```
+
+The renderer receives `MessageBubbleRendererProps`:
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `message` | `ChatMessage` | The full message being rendered |
+| `content` | `string` | Text to render. For user messages the `Elemento referenciado: …` reference prefix is already stripped, so this is the user's actual text |
+| `role` | `'user' \| 'assistant'` | Resolved role of the bubble |
+| `references` | `string[]` | Reference labels parsed out of the message (user messages only) |
+
+Notes:
+
+- The renderer only replaces the bubble's **text content**. Reference chips
+  (above the bubble), file attachments and the voice playback control are still
+  rendered by the library around the returned node.
+- It is only invoked when there is text to render; a message with only
+  attachments behaves as before.
+- Without a renderer, the default markdown rendering applies (see
+  [Markdown rendering](#markdown-rendering)).
+
+Exported types: `MessageBubbleRenderer`, `MessageBubbleRendererProps`.
 
 ### Reference chip node
 
@@ -983,6 +1032,8 @@ import type {
   ChatDrawerOptions,
   ChatDrawerHandle,
   SuggestedMessage,
+  MessageBubbleRenderer,
+  MessageBubbleRendererProps,
 
   // AICommandBar types
   AICommandBarProps,
@@ -1157,6 +1208,8 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `handoffWidgetRenderer` | `(props: { thread, agent, elapsedSeconds, isTerminal }) => ReactNode` | — | Custom renderer for the HandoffSubagentWidget (replaces default UI) |
 | `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
 | `customPromptBox` | `(props: CustomPromptBoxProps) => ReactNode` | — | Replace the default input area with a custom component. Receives `sendMessage`, `transcribeAudio`, `stop`, `isLoading`, `newConversation` and reference helpers |
+| `userMessageRenderer` | `MessageBubbleRenderer` | — | Replace the built-in markdown renderer for **user** message bubbles. Receives `{ message, content, role, references }` |
+| `assistantMessageRenderer` | `MessageBubbleRenderer` | — | Replace the built-in markdown renderer for **assistant** message bubbles. Receives `{ message, content, role, references }` |
 
 ## Message Feedback
 
