@@ -567,6 +567,55 @@ Enable drag-to-resize with width constraints:
 />
 ```
 
+### Markdown rendering
+
+Both **assistant and user** message bubbles render their text through
+`markdown-to-jsx` (≥ 0.30.0; before that, only assistant messages did).
+This means user input is interpreted as markdown — `**bold**`, `_italic_`,
+`# headings`, `- lists`, fenced code blocks, links and tables all render.
+Links, inline code and blockquotes are styled to stay legible on the colored
+user bubble, and single-line messages keep their original bubble height
+(outer paragraph margins are collapsed).
+
+There is no flag to opt out per role: if your users paste content with stray
+markdown characters (`*`, `_`, `#`, `1.`) be aware it will be formatted. Use a
+`customPromptBox`/your own bubble rendering if you need raw-text user messages.
+
+Tables get a horizontally scrollable wrapper (`.markdown-table`); the markdown
+overrides are applied identically for both roles.
+
+### Reference chip node
+
+The chip that represents an `AIElementWrapper` reference is exported as a
+standalone node, `ReferenceChip`, so you can render the same chip in custom
+prompt boxes or custom message bubbles. It is the exact component used
+internally by `ChatInput` (active references, removable) and `ChatMessages`
+(read-only chips above a sent user bubble).
+
+```tsx
+import { ReferenceChip } from '@devicai/ui';
+
+// Removable chip in an input area
+<ReferenceChip
+  label="Acme Corp"
+  variant="input"
+  onRemove={() => removeReference(ref.id)}
+/>
+
+// Read-only chip above a message bubble
+<ReferenceChip label="Acme Corp" variant="message" />
+```
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `label` | `string` | *required* | Text shown in the chip (quoted automatically) |
+| `variant` | `'input' \| 'message'` | `'input'` | `input` = prompt-box styling; `message` = inside a sent bubble |
+| `onRemove` | `() => void` | — | When set, renders a × button (meaningful for `input`) |
+| `icon` | `ReactNode` | corner-down-right arrow | Override the default reference glyph |
+| `className` | `string` | — | Extra class appended to the chip root |
+
+Exported types: `ReferenceChipProps`, `ReferenceChipVariant`.
+
 ### Custom Prompt Box
 
 Replace the entire default input area with a custom React component. The component receives `sendMessage`, `stop`, `isLoading`, and `newConversation` props so it can fully drive the conversation.
@@ -985,6 +1034,10 @@ import type {
   AgentTaskDto,
   AgentDto,
   HandOffToolResponse,
+
+  // Reference chip types
+  ReferenceChipProps,
+  ReferenceChipVariant,
 } from '@devicai/ui';
 
 // Import the AgentThreadState enum (value export)
@@ -1962,13 +2015,17 @@ When `behavior='drawer'` is used, the wrapper integrates with the `ChatDrawer` t
    - Renders chip widgets above the textarea (or passes them to a custom prompt box).
    - On send, prefixes the user message with `Elemento referenciado: "<labels>"\n\n<message>`.
    - Clears the references after sending.
-3. When the user message renders in the bubble, the prefix is parsed out and shown as small chip widgets above the bubble — the bubble itself only displays the user's actual message text. The LLM still receives the full prefixed content.
+3. When the user message renders in the bubble, the prefix is parsed out and shown as `ReferenceChip` nodes (`variant="message"`) above the bubble — the bubble itself only displays the user's actual message text, **rendered as markdown** (see [Markdown rendering](#markdown-rendering)). The LLM still receives the full prefixed content.
+
+The same `ReferenceChip` component is used for the active references inside the input area (`variant="input"`, with a remove button) and for the read-only chips above sent user bubbles, so both look identical. It is exported for reuse (see [Reference chip node](#reference-chip-node)).
 
 ### Custom prompt box integration
 
-`CustomPromptBoxProps` exposes the references so a custom input can render or strip them itself:
+`CustomPromptBoxProps` exposes the references so a custom input can render or strip them itself. You can reuse the exported `ReferenceChip` to match the default look:
 
 ```tsx
+import { ReferenceChip, CustomPromptBoxProps } from '@devicai/ui';
+
 function MyPromptBox({
   sendMessage,
   references,
@@ -1978,9 +2035,12 @@ function MyPromptBox({
   return (
     <div>
       {references.map((r) => (
-        <Chip key={r.id} onRemove={() => removeReference(r.id)}>
-          {r.label}
-        </Chip>
+        <ReferenceChip
+          key={r.id}
+          label={r.label}
+          variant="input"
+          onRemove={() => removeReference(r.id)}
+        />
       ))}
       <TextInput
         onSubmit={(text) => sendMessage(text)}
