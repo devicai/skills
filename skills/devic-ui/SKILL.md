@@ -123,6 +123,53 @@ const { histories, total } = await client.listConversations('assistant-id', {
 
 Backed by the `subtenantId` query param on `GET /api/v1/assistants/:id/chats` (matched against the canonical `metadata.subtenantId`). Sending it against an older backend is harmless — unknown query params are ignored, so the list simply isn't subtenant-filtered.
 
+## Conversation Tags
+
+Tags label a conversation. They are a **top-level** property of the message
+(the public API's `tags: string[]`), **distinct from `metadata` and from
+`tenantId`/`subtenantId`** — do **not** put them in `tenantMetadata` (that
+travels inside `metadata`, a different field, and won't become real tags).
+
+You can set them at three levels; they are **merged and deduped**
+(provider ∪ component ∪ per-message), following the same precedence model as
+`tenantId`:
+
+```tsx
+// 1) Globally on the provider — applied to every conversation
+<DevicProvider apiKey="devic-xxx" tags={['web-app']}>
+  {/* 2) Per ChatDrawer (also AICommandBar / AIGenerationButton) */}
+  <ChatDrawer assistantId="support" tags={['support']} />
+</DevicProvider>
+```
+
+```tsx
+// 3) Per message — via useDevicChat or a customPromptBox
+const { sendMessage } = useDevicChat({ assistantId: 'support', tags: ['support'] });
+sendMessage('My card was declined', { tags: ['urgent', 'billing'] });
+// sent tags = ['web-app', 'support', 'urgent', 'billing'] (deduped)
+
+// customPromptBox receives the same per-message channel:
+//   sendMessage(text, files, { tags: ['urgent'] })
+```
+
+`tags` is accepted as a prop by `ChatDrawer`, `AICommandBar` and
+`AIGenerationButton`, and as an option by `useDevicChat` / `useAICommandBar` /
+`useAIGenerationButton`. All three components also inherit the provider's
+global `tags`.
+
+### Listing existing tags
+
+To power autocompletion or filters, read the unique tags used across the
+account's chat histories:
+
+```tsx
+const tags = await client.getChatTags(); // string[] — GET /api/v1/assistants/tags
+```
+
+Conversations returned by `listConversations` / chat history endpoints carry
+their own `tags` array. See the `devic-api` skill (assistants reference) for the
+server-side `tags` filter on the chats listing.
+
 ### Usage bar
 
 When the tenant/subtenant has usage limits configured, `ChatDrawer` can render a usage bar above the input, fed by the read-only `GET /api/v1/tenant-usage` endpoint (renders nothing when there are no limits):
@@ -1141,6 +1188,7 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `tenantMetadata` | `TenantMetadata` | — | Tenant metadata `{ name, email, imageUrl, … }` (overrides provider) |
 | `subtenantId` | `string` | — | Subtenant (end-user) ID (overrides provider). Falls back to `subtenantMetadata.id` / `tenantMetadata.userId` |
 | `subtenantMetadata` | `SubtenantMetadata` | — | Subtenant metadata `{ id, name, email, imageUrl }` (overrides provider) |
+| `tags` | `string[]` | — | Conversation tags (top-level, distinct from metadata). Merged/deduped with the provider's `tags` and per-message tags. See [Conversation Tags](#conversation-tags) |
 | `showUsageBar` | `boolean \| 'onDemand'` | `false` | Usage bar above the input (`true` / `'onDemand'` toggle). Needs `tenantId` + configured limits |
 | `usageBarMetric` | `'tokens' \| 'cost'` | — | Restrict the usage bar to one metric |
 | `usageBarDisplay` | `UsageBarDisplay` | `{ showPercent, showAllRules }` | `{ showValues?, showPercent?, showAllRules? }` |
@@ -1575,6 +1623,7 @@ function CustomCommandBar() {
 | `baseUrl` | `string` | — | Base URL (overrides provider) |
 | `tenantId` | `string` | — | Tenant ID (overrides provider) |
 | `tenantMetadata` | `TenantMetadata` | — | Tenant metadata |
+| `tags` | `string[]` | — | Conversation tags (merged/deduped with the provider's). See [Conversation Tags](#conversation-tags) |
 | `options` | `AICommandBarOptions` | — | Display and behavior options |
 | `isVisible` | `boolean` | — | Controlled visibility state |
 | `onVisibilityChange` | `(visible: boolean) => void` | — | Fires when visibility changes |
@@ -1882,6 +1931,7 @@ function CustomGenerateButton() {
 | `baseUrl` | `string` | — | Base URL (overrides provider) |
 | `tenantId` | `string` | — | Tenant ID (overrides provider) |
 | `tenantMetadata` | `TenantMetadata` | — | Tenant metadata |
+| `tags` | `string[]` | — | Conversation tags (merged/deduped with the provider's). See [Conversation Tags](#conversation-tags) |
 | `options` | `AIGenerationButtonOptions` | — | Display and behavior options |
 | `modelInterfaceTools` | `ModelInterfaceTool[]` | — | Client-side tools |
 | `onResponse` | `(result: GenerationResult) => void` | — | Fires on successful generation |
