@@ -457,9 +457,47 @@ POST /api/v1/agents/:agentId/threads
 |-------|------|----------|-------------|
 | `message` | string | Yes | Initial message/task for the agent |
 | `tags` | string[] | No | Tags to associate with the thread |
-| `metadata` | object | No | Custom metadata for the thread |
+| `metadata` | object | No | Custom metadata for the thread. `metadata.promptTemplateParams` fills `{{placeholder}}` variables in the agent's system prompt — see [Prompt Template Parameters](#prompt-template-parameters). |
 | `tenantId` | string | No | Tenant the thread belongs to (multi-tenant environments). Auto-registers the tenant on first use and attributes cost/usage to it. See [tenants.md](tenants.md). |
 | `subtenantId` | string | No | End user/entity inside the tenant. When omitted it is derived from `metadata.subtenantMetadata.id` or the legacy `metadata.userId`. Used for per-subtenant cost attribution and usage limits. |
+
+### Prompt Template Parameters
+
+The agent's system prompt (the `presets` of its `assistantSpecialization`) can contain `{{variableName}}` placeholders. When the thread is created with `metadata.promptTemplateParams`, the system prompt is processed before execution, replacing each `{{variableName}}` placeholder with the matching value:
+
+| Metadata Field | Type | Description |
+|----------------|------|-------------|
+| `promptTemplateParams` | object (`Record<string, any>`) | Key-value map of template variables. Each key replaces the `{{key}}` placeholder in the system prompt. |
+
+For example, with an agent whose presets contain:
+
+```
+Process data for {{customerName}} in region {{region}}.
+```
+
+Create the thread with the values in metadata:
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/agents/agent-123/threads" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Run the monthly data processing task",
+    "metadata": {
+      "promptTemplateParams": {
+        "customerName": "Acme Corp",
+        "region": "North America"
+      }
+    }
+  }'
+```
+
+The agent executes with the system prompt already resolved: "Process data for Acme Corp in region North America."
+
+**Notes:**
+- The misspelled legacy key `propmptTemplateParams` is also accepted for backward compatibility (and takes precedence when both are present). Use the correct spelling `promptTemplateParams` in new integrations.
+- This keeps a single agent reusable across customers/contexts: per-thread context travels in the thread metadata instead of requiring one agent per customer.
+- The same mechanism is available for assistant messages — see [assistants.md](assistants.md#prompt-template-parameters).
 
 ### Example Request
 
