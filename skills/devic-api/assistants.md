@@ -333,9 +333,47 @@ POST /api/v1/assistants/:identifier/messages
 | `provider` | string | No | Override the LLM provider (e.g., "openai", "anthropic") |
 | `model` | string | No | Override the model (e.g., "gpt-4", "claude-3-opus") |
 | `tags` | string[] | No | Tags to associate with this chat |
-| `metadata` | object | No | Custom metadata to store with the chat |
+| `metadata` | object | No | Custom metadata to store with the chat. `metadata.promptTemplateParams` fills `{{placeholder}}` variables in the assistant's `presets` — see [Prompt Template Parameters](#prompt-template-parameters). |
 | `tenantId` | string | No | Tenant the conversation belongs to (multi-tenant environments). Auto-registers the tenant on first use and attributes cost/usage to it. See [tenants.md](tenants.md). |
 | `subtenantId` | string | No | End user/entity inside the tenant. When omitted it is derived from `metadata.subtenantMetadata.id` or the legacy `metadata.userId`. Used for per-subtenant cost attribution and usage limits. |
+
+### Prompt Template Parameters
+
+The assistant's `presets` (system prompt) can contain `{{variableName}}` placeholders. When the message request includes `metadata.promptTemplateParams`, the presets are processed before the LLM call, replacing each `{{variableName}}` placeholder with the matching value:
+
+| Metadata Field | Type | Description |
+|----------------|------|-------------|
+| `promptTemplateParams` | object (`Record<string, any>`) | Key-value map of template variables. Each key replaces the `{{key}}` placeholder in the presets. |
+
+For example, with an assistant whose presets are:
+
+```
+You are a support agent for {{companyName}}. You are talking to {{userName}}.
+```
+
+Send the values with the message:
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Where is my order?",
+    "metadata": {
+      "promptTemplateParams": {
+        "companyName": "Acme Corp",
+        "userName": "Jane Doe"
+      }
+    }
+  }'
+```
+
+The assistant answers with the system prompt already personalized: "You are a support agent for Acme Corp. You are talking to Jane Doe."
+
+**Notes:**
+- The misspelled legacy key `propmptTemplateParams` is also accepted for backward compatibility (and takes precedence when both are present). Use the correct spelling `promptTemplateParams` in new integrations.
+- This keeps a single assistant specialization reusable across customers/users: the per-conversation context travels in the message metadata instead of requiring one specialization per customer.
+- The same mechanism is available for agent threads — see [agents.md](agents.md#prompt-template-parameters).
 
 ### Synchronous Mode (Default)
 
