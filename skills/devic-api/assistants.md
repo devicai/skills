@@ -458,6 +458,8 @@ GET /api/v1/assistants/:identifier/chats
 | `offset` | number | 0 | Number of items to skip |
 | `limit` | number | 10 | Maximum items to return (max: 100) |
 | `omitContent` | boolean | false | Exclude chat content from response (metadata only) |
+| `tenantId` | string | - | Filter chat histories by tenant ID |
+| `subtenantId` | string | - | Filter chat histories by subtenant ID (end user/entity inside a tenant) |
 
 ### Response
 
