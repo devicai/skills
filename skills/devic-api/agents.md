@@ -522,6 +522,8 @@ GET /api/v1/agents/:agentId/threads
 | `durationOrder` | string | - | Sort by duration (`asc` or `desc`) |
 | `tokensOrder` | string | - | Sort by tokens (`asc` or `desc`) |
 | `tags` | string | - | Comma-separated tags (matches ANY tag) |
+| `tenantId` | string | - | Filter by tenant ID |
+| `subtenantId` | string | - | Filter by subtenant ID (end user/entity inside a tenant) |
 
 ### Example Request
 
