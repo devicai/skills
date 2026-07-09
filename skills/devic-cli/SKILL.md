@@ -134,7 +134,7 @@ devic assistants create [--name <name>] [--description <desc>] [--from-json <fil
 | `--description <desc>` | Assistant description |
 | `--from-json <file>` | Read full assistant config from JSON file (- for stdin) |
 
-The `--from-json` payload supports all assistant specialization fields: `name`, `description`, `presets`, `model`, `provider`, `imgUrl`, `state`, `availableToolsGroupsUids`, `enabledTools`, `accessConfiguration`, `widgetConfiguration`, `memoryDocuments`, `structuredOutput`, `guardrailsConfiguration`, `codeSnippetIds`, `availableSkillIds`, `subagentsIds`, `maxChatMessages`, `maxToolResponseInputTokens`.
+The `--from-json` payload supports all assistant specialization fields: `name`, `description`, `presets`, `model`, `provider`, `imgUrl`, `state`, `availableToolsGroupsUids`, `enabledTools`, `accessConfiguration`, `widgetConfiguration`, `memoryDocuments`, `structuredOutput`, `guardrailsConfiguration`, `codeSnippetIds`, `availableSkillIds`, `subagentsIds`, `maxChatMessages`, `maxToolResponseInputTokens`, `contextManagement` (`{ fullContextTurnDepth?: number, alwaysIncludeUserMessages?: boolean }` — send only the most recent N turns in full and summarize older ones).
 
 #### devic assistants update
 
@@ -257,7 +257,7 @@ devic agents get <agentId>
 devic agents create [--name <name>] [--description <desc>] [--from-json <file>]
 ```
 
-The `--from-json` payload supports all agent fields: `name`, `description`, `assistantSpecialization` (with `presets`, `availableToolsGroupsUids`, `enabledTools`, `model`, `provider`, `subagentsIds`), `provider`, `llm`, `maxExecutionInputTokens`, `maxExecutionToolCalls`, `evaluationConfig`, `subAgentConfig`.
+The `--from-json` payload supports all agent fields: `name`, `description`, `assistantSpecialization` (with `presets`, `availableToolsGroupsUids`, `enabledTools`, `model`, `provider`, `subagentsIds`, `contextManagement`), `provider`, `llm`, `maxExecutionInputTokens`, `maxExecutionToolCalls`, `evaluationConfig`, `subAgentConfig`.
 
 #### devic agents update
 

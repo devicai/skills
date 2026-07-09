@@ -138,6 +138,7 @@ The `assistantSpecialization` defines the agent's behavior, tools, and capabilit
 | `memoryDocuments` | object[] | Persistent context documents |
 | `codeSnippetIds` | string[] | Code snippets available to the agent |
 | `subagentsIds` | string[] | Other agents this agent can invoke |
+| `contextManagement` | object | Context depth control: `{ fullContextTurnDepth?: number, alwaysIncludeUserMessages?: boolean }` — send only the most recent N turns in full and summarize older ones. See [Context Depth](#context-depth) |
 
 ### subAgentConfig Object
 
@@ -309,6 +310,7 @@ POST /api/v1/agents
 | `provider` | string | Default LLM provider |
 | `codeSnippetIds` | string[] | Code snippets available to the agent |
 | `subagentsIds` | string[] | Other agents this agent can invoke |
+| `contextManagement` | object | Context depth control: `{ fullContextTurnDepth?: number, alwaysIncludeUserMessages?: boolean }`. See [Context Depth](#context-depth) |
 
 ### Example Request
 
@@ -993,4 +995,37 @@ GET /api/v1/agents/agents/:agentId/threads/tags
   "success": true,
   "data": ["urgent", "review", "sales", "quarterly", "approved"]
 }
+```
+
+## Context Depth
+
+On long-running agent threads the input context grows every turn, increasing latency and cost. The `contextManagement` object (inside `assistantSpecialization`) lets the agent send only the most recent turns verbatim and replace older ones with a short, AI-generated summary.
+
+```json
+{
+  "assistantSpecialization": {
+    "contextManagement": {
+      "fullContextTurnDepth": 4,
+      "alwaysIncludeUserMessages": false
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fullContextTurnDepth` | number | Number of most-recent **turns** sent to the model in full. A turn is a user message and its whole assistant/tool response chain. Older turns are replaced by their summary plus a placeholder that tells the model it is a recap of a previous action. `0` or omitted disables compression. |
+| `alwaysIncludeUserMessages` | boolean | When `true`, user messages are always sent in full even if their turn is outside the depth window; only assistant replies and tool interactions get summarized. |
+
+### Notes
+
+- `system`/`developer` (instruction) messages are never compacted. Because the boundary always falls on a user message, tool-call / tool-response pairs are never split.
+- Summarizing older turns changes the prompt prefix, which can reduce the reusable prompt cache on upcoming turns.
+- Configuration example:
+
+```bash
+curl -X PATCH "https://api.devic.ai/api/v1/agents/{agentId}" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{ "assistantSpecialization": { "contextManagement": { "fullContextTurnDepth": 4 } } }'
 ```

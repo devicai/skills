@@ -40,6 +40,7 @@ Assistant Specializations define how an assistant behaves, what tools it can use
 | `provider` | string | Default LLM provider |
 | `memoryDocuments` | object[] | Persistent context documents |
 | `inputDelayMs` | number | Message buffer delay in ms for async mode (500–30000). See [Message Buffering](#message-buffering-input-delay) |
+| `contextManagement` | object | Context depth control (summarize older turns). See [Context Depth](#context-depth) |
 | `accessConfiguration` | object | Visibility and external access settings |
 
 ### Tool Access
@@ -188,6 +189,7 @@ POST /api/v1/assistants
 | `maxChatMessages` | number | No | Maximum chat messages to include in context |
 | `maxToolResponseInputTokens` | number | No | Maximum input tokens for tool responses |
 | `inputDelayMs` | number | No | Message buffer delay in ms for async mode (min: 500, max: 30000). See [Message Buffering](#message-buffering-input-delay) |
+| `contextManagement` | object | No | Context depth control: `{ fullContextTurnDepth?: number, alwaysIncludeUserMessages?: boolean }`. See [Context Depth](#context-depth) |
 
 ### Response (201 Created)
 
@@ -838,3 +840,43 @@ To disable buffering, set it to `undefined` or `0`, or omit the field.
 - **Range**: 500 – 30000 ms
 - **Conflict during processing**: Sending a message while status is `processing` returns `409 Conflict` — the client must wait for completion before sending new messages
 - **Multi-instance safe**: Uses Redis distributed locks so only one instance processes the buffer
+
+## Context Depth
+
+On long conversations the full message history sent to the model grows on every turn, increasing latency and cost. The `contextManagement` object lets an assistant send only the most recent turns verbatim and replace older ones with a short, AI-generated summary of what happened.
+
+```json
+{
+  "contextManagement": {
+    "fullContextTurnDepth": 4,
+    "alwaysIncludeUserMessages": false
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fullContextTurnDepth` | number | Number of most-recent **turns** sent to the model in full. A turn is a user message and its whole assistant/tool response chain. Older turns are replaced by their summary plus a placeholder that tells the model it is a recap of a previous action. `0` or omitted disables compression (the whole history is sent verbatim — legacy behaviour). |
+| `alwaysIncludeUserMessages` | boolean | When `true`, user messages are always sent in full even if their turn is outside the depth window; only assistant replies and tool interactions get summarized. |
+
+### How It Works
+
+1. The most recent `fullContextTurnDepth` turns are sent verbatim.
+2. Every earlier turn is compacted: each message is replaced by its summary, prefixed to preserve authorship (e.g. *"[Summary of an earlier tool call you (the assistant) made]"*). `system`/`developer` (instruction) messages are **never** compacted.
+3. Because the boundary always falls on a user message, tool-call / tool-response pairs are never split.
+
+### Configuration
+
+```bash
+curl -X PATCH "https://api.devic.ai/api/v1/assistants/my-assistant" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{ "contextManagement": { "fullContextTurnDepth": 4, "alwaysIncludeUserMessages": true } }'
+```
+
+To disable, set `fullContextTurnDepth` to `0` or omit `contextManagement`.
+
+### Notes
+
+- Summarizing older turns changes the prompt prefix, which can reduce the reusable prompt cache on upcoming turns.
+- Applies to both assistant conversations and agent threads that use this assistant/specialization.
