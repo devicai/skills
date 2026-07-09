@@ -529,6 +529,44 @@ The JSON file should contain the parameters object: `{"city": "London"}`.
 
 ---
 
+### devic documents
+
+Manage knowledge documents (markdown). List, read, create, update and manage versions.
+
+```bash
+devic documents list [--project <p>] [--folder <id>] [--file-type md]
+devic documents get <documentId>
+devic documents create --name <name> [content source]
+devic documents update <documentId> [fields...]
+devic documents versions list <documentId>
+devic documents versions revert <documentId> <version>
+```
+
+#### Providing document content (create / update)
+
+The markdown body is **never read from a shell redirect by itself**. You must
+pass it through one of these content sources:
+
+| Source | Example |
+|--------|---------|
+| Inline | `devic documents update <id> --content "# Title\n..."` |
+| From a file | `devic documents update <id> --from-file SKILL.md` |
+| From stdin (pipe) | `cat SKILL.md \| devic documents update <id> --from-stdin` |
+
+> ⚠️ **Do NOT use** `devic documents update <id> < file.md` **on its own.** A bare
+> shell redirect is only picked up when the process detects a piped stdin; the
+> reliable forms are `--from-file <path>` or a real pipe with `--from-stdin`. To
+> avoid silent mistakes, `update` now **refuses an empty payload** (it errors out
+> instead of returning a misleading success), and the response includes
+> `versionCreated: true|false` so you can confirm a new version was actually
+> written. Always check that flag after updating.
+
+`update` only creates a new version when the content actually changes; updating
+with identical content (or only metadata like `--name`/`--folder`) reports
+`versionCreated: false`.
+
+---
+
 ### devic feedback
 
 Submit and view feedback on chat messages and thread messages.
