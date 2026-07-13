@@ -1,6 +1,6 @@
 ---
 name: devic-cli
-description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, or building agent workflows that interact with assistants, agents, tool servers, and feedback."
+description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, building agent workflows that interact with assistants, agents, tool servers, documents and feedback, or installing/updating Devic skills into local coding agents (claude-code, codex, cursor, opencode, cline)."
 ---
 
 # @devicai/cli
@@ -564,6 +564,94 @@ pass it through one of these content sources:
 `update` only creates a new version when the content actually changes; updating
 with identical content (or only metadata like `--name`/`--folder`) reports
 `versionCreated: false`.
+
+---
+
+### devic skills
+
+Browse and install Devic **skills** (documents or folders flagged as skills, in the
+SKILL.md format) into your local coding agents. Mirrors the `skills.sh` model:
+each skill is written as a folder named after the skill into the agent's skills
+directory, and an install registry (lockfile) tracks what is installed so it can
+be refreshed with `update`.
+
+#### devic skills list (alias: ls)
+
+List the skills catalog.
+
+```bash
+devic skills list [--tag <tag...>] [--search <text>] [--project <projectId>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--tag <tag...>` | Filter by tag (repeatable, e.g. `--tag cli --tag qa`) |
+| `--search <text>` | Free-text search over name/description |
+| `--project <projectId>` | Filter by project id |
+
+Human output shows a table with id, name, type (`document`/`folder`), tags, and
+usage stats: linked **agents**, **assistants**, and **reads** (how often the skill
+was consulted by agents via the knowledge tools).
+
+#### devic skills tags
+
+List the distinct tags across skills (for `--tag` filtering).
+
+```bash
+devic skills tags [--project <projectId>]
+```
+
+#### devic skills install (alias: add)
+
+Download a skill's whole tree into your coding agents. The skill is resolved by
+**id or name**. Records the install locally (lockfile) and in Devic (install
+counter + per-user install date).
+
+```bash
+devic skills install <id|name> [-a <agents...>] [-g]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-a, --agent <agents...>` | Target agents: `claude-code`, `codex`, `cursor`, `opencode`, `cline`, or `*` for all. Auto-detected from installed agents when omitted (falls back to `claude-code`) |
+| `-g, --global` | Install to the user-level (global) agent directories instead of the project ones |
+
+Install locations (a folder named after the skill is created inside):
+
+| Agent | Project path | Global path |
+|-------|--------------|-------------|
+| claude-code | `.claude/skills/` | `~/.claude/skills/` |
+| codex | `.agents/skills/` | `~/.codex/skills/` |
+| cursor | `.agents/skills/` | `~/.cursor/skills/` |
+| opencode | `.agents/skills/` | `~/.config/opencode/skills/` |
+| cline | `.agents/skills/` | `~/.agents/skills/` |
+
+A folder-skill is written with its full tree (`SKILL.md` + referenced files, at
+their relative paths). A document-skill is written as a single `SKILL.md`.
+
+#### devic skills update
+
+Refresh installed skills to their latest version. Compares the installed version
+(from the lockfile) against Devic and only rewrites what changed.
+
+```bash
+devic skills update [id|name] [-g]
+```
+
+Omit the argument to update every installed skill; pass an id/name to update just
+one. `-g` targets the global install registry.
+
+#### devic skills installed
+
+List what is installed locally (from the lockfile), with the installed version and
+date.
+
+```bash
+devic skills installed [-g]
+```
+
+The lockfile lives at `.devic/skills.json` (project) or `~/.devic/skills.json`
+(global).
 
 ---
 
