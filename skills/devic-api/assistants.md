@@ -35,7 +35,7 @@ Assistant Specializations define how an assistant behaves, what tools it can use
 | `description` | string | Description of the assistant's purpose |
 | `presets` | string | System prompt / instructions |
 | `availableToolsGroupsUids` | string[] | Tool group IDs the assistant can use |
-| `enabledTools` | string[] | Explicit subset of enabled tool names |
+| `enabledTools` | string[] \| null | Explicit subset of enabled tool names. `null` enables every tool of the assigned groups, `[]` enables none |
 | `model` | string | Default LLM model |
 | `provider` | string | Default LLM provider |
 | `memoryDocuments` | object[] | Persistent context documents |
@@ -50,7 +50,9 @@ Assistants access tools through `availableToolsGroupsUids`:
 1. Each UID references a **Tools Group**
 2. Tools Groups can include built-in tools or reference a **Tool Server**
 3. When processing messages, the assistant can invoke available tools
-4. Use `enabledTools` to restrict access to specific tools
+4. Use `enabledTools` to restrict access to specific tools. It is an allowlist of
+   tool names across all the assigned groups: `null` (or absent) enables every
+   tool of those groups, `[]` enables none
 
 ### Access Configuration
 
@@ -137,17 +139,24 @@ GET /api/v1/assistants/:identifier
 {
   "success": true,
   "data": {
-    "identifier": "default",
-    "name": "General Assistant",
-    "description": "A general-purpose AI assistant",
-    "enabled": true,
-    "externalEnabled": true,
-    "systemPrompt": "You are a helpful assistant...",
-    "model": "gpt-4",
-    "provider": "openai"
+    "identifier": "a1289b11-fe5a-4c50-8e90-138850651932",
+    "name": "Sales Assistant",
+    "description": "A sales-oriented AI assistant",
+    "state": "active",
+    "imgUrl": "https://example.com/avatar.png",
+    "model": "gpt-5",
+    "isCustom": true,
+    "creationTimestampMs": 1751020800000,
+    "availableToolsGroupsUids": ["6712f0c1a4b2c3d4e5f60718"],
+    "enabledTools": ["search_customers", "create_deal"]
   }
 }
 ```
+
+`availableToolsGroupsUids` and `enabledTools` are only returned for custom
+assistants. An `enabledTools` of `null` means every tool of the assigned tool
+groups is enabled. Read them before a partial update if you intend to preserve
+the current tool selection — see [Update Assistant](#update-assistant).
 
 ### Error Responses
 
@@ -177,7 +186,7 @@ POST /api/v1/assistants
 | `imgUrl` | string | No | Image URL for the assistant |
 | `state` | string | No | State: `active`, `inactive`, or `coming_soon` |
 | `availableToolsGroupsUids` | string[] | No | Tool group UIDs the assistant can use |
-| `enabledTools` | string[] | No | Explicit subset of enabled tool names |
+| `enabledTools` | string[] \| null | No | Explicit subset of enabled tool names. Defaults to every tool of the assigned groups |
 | `accessConfiguration` | object | No | `{ externalAccess?: boolean, visibilityByRole?: string[] }` |
 | `widgetConfiguration` | object | No | `{ enabled?: boolean, sourcesWhiteList?: string[], color?: string, welcomeMessage?: string }` |
 | `memoryDocuments` | object[] | No | RAG memory documents `[{ genericDocument?, name?, summary? }]` |
@@ -249,6 +258,11 @@ PATCH /api/v1/assistants/:identifier
 ### Request Body
 
 All fields from `CreateAssistantDto` are accepted, but all are optional. Only provided fields will be updated.
+
+`enabledTools` follows the same rule: omit it and the current tool selection is
+left untouched. To change it, send the full list of tool names you want enabled;
+send `null` to enable every tool of the assigned tool groups, or `[]` to enable
+none.
 
 ### Response (200 OK)
 
