@@ -118,7 +118,7 @@ Understanding how the core entities relate to each other is essential for buildi
 **Assistant Specialization**: The core configuration object that defines how an AI assistant or agent behaves. It includes:
 - `presets` - System prompt instructions. May contain `{{placeholder}}` variables that are filled at request time via `metadata.promptTemplateParams` (see [assistants.md](assistants.md#prompt-template-parameters) and [agents.md](agents.md#prompt-template-parameters))
 - `availableToolsGroupsUids` - Array of tool group identifiers that determine available tools
-- `enabledTools` - Optional subset of explicitly enabled tool identifiers
+- `enabledTools` - Optional allowlist of tool identifiers across the assigned groups. `null` (or absent) enables every tool of those groups, `[]` enables none. On a partial update, omit it to leave the current selection untouched
 - `model` / `provider` - Default LLM configuration
 - `memoryDocuments` - Persistent context documents
 

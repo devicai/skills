@@ -132,7 +132,7 @@ The `assistantSpecialization` defines the agent's behavior, tools, and capabilit
 | `name` | string | Specialization name |
 | `presets` | string | System prompt / instructions |
 | `availableToolsGroupsUids` | string[] | Tool group IDs the agent can use |
-| `enabledTools` | string[] | Explicit subset of enabled tool names |
+| `enabledTools` | string[] \| null | Explicit subset of enabled tool names. `null` enables every tool of the assigned groups, `[]` enables none |
 | `model` | string | Default model |
 | `provider` | string | Default LLM provider |
 | `memoryDocuments` | object[] | Persistent context documents |
@@ -161,7 +161,9 @@ Agents access tools through the `availableToolsGroupsUids` property:
    - Built-in platform tools
    - External tools from a **Tool Server**
 3. When an agent executes, it can call any tool from its assigned groups
-4. Use `enabledTools` to restrict to a specific subset
+4. Use `enabledTools` to restrict to a specific subset: it is an allowlist of
+   tool names across all the assigned groups, where `null` (or absent) enables
+   every tool of those groups and `[]` enables none
 
 **Example**: An agent with `availableToolsGroupsUids: ["crm-tools", "email-tools"]` can use all tools from both the CRM and Email tool groups during execution.
 
@@ -305,7 +307,7 @@ POST /api/v1/agents
 |-------|------|-------------|
 | `presets` | string | System prompt / instructions |
 | `availableToolsGroupsUids` | string[] | Tool group IDs the agent can use |
-| `enabledTools` | string[] | Explicit subset of enabled tool names |
+| `enabledTools` | string[] \| null | Explicit subset of enabled tool names. `null` enables every tool of the assigned groups, `[]` enables none |
 | `model` | string | Default model |
 | `provider` | string | Default LLM provider |
 | `codeSnippetIds` | string[] | Code snippets available to the agent |
