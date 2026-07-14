@@ -141,10 +141,22 @@ The `--from-json` payload supports all assistant specialization fields: `name`, 
 Update an existing assistant (partial updates supported).
 
 ```bash
-devic assistants update <identifier> [--name <name>] [--description <desc>] [--from-json <file>]
+devic assistants update <identifier> [--name <name>] [--description <desc>] [--enabled-tools <a,b,c>] [--all-tools] [--from-json <file>]
 ```
 
-Same options as `create`. Only provided fields will be updated.
+Same options as `create`, plus the tool selection flags below. Only provided fields will be updated.
+
+| Option | Description |
+|--------|-------------|
+| `--enabled-tools <a,b,c>` | Replace the enabled tool names. Use `""` to enable none |
+| `--all-tools` | Enable every tool of the assigned tool groups |
+
+`--enabled-tools` and `--all-tools` are mutually exclusive. Pass neither and the
+current tool selection is left untouched — read it with `devic assistants get`,
+which reports it as `all`, `none`, or the explicit list.
+
+Requires CLI 0.14.0 or newer. Earlier versions could only change the selection
+through `--from-json`.
 
 #### devic assistants delete
 
