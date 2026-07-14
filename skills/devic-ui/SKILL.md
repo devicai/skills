@@ -441,17 +441,53 @@ to `<ChatDrawer>`. In the Devic platform:
 ### Behaviour with the default `finish_execution`
 
 The tool takes a single `message` argument holding the final answer (Markdown
-supported). The backend intercepts the call, copies `message` into the
-assistant message's `content.message`, and emits the tool response itself.
+supported). **The model emits only the tool call, no text of its own.** The
+backend intercepts it, copies `message` into the assistant message's
+`content.message`, and emits the tool response itself. So the reply you render
+was produced by the tool, not typed by the model — `contentSource:
+'finish_tool'` on the message says exactly that, and is absent on replies the
+model wrote itself.
+
+The resulting turn looks like this:
+
+```jsonc
+{
+  "role": "assistant",
+  "content": { "message": "The capital of France is Paris." }, // lifted by the backend
+  "contentSource": "finish_tool",
+  "tool_calls": [{ "function": { "name": "finish_execution",
+                                 "arguments": "{\"message\":\"The capital of France is Paris.\"}" } }]
+}
+// followed by a synthetic tool response ("Execution finished.") that closes the
+// tool_call/tool_result pair. It is never rendered.
+```
 
 devic-ui renders it as a **normal assistant bubble** — no tool activity line for
 `finish_execution`, since it is how the answer is delivered rather than an action
-the assistant took (≥ 0.35.0; earlier versions showed a stray `finish_execution`
-entry under the answer). Nothing to configure:
+the assistant took (≥ 0.35.0; earlier versions rendered the reply a second time
+below the bubble, as a tool activity line). Nothing to configure:
 
 ```tsx
 // The assistant has requiredToolUse enabled — the drawer needs no extra props.
 <ChatDrawer assistantId="my-assistant" apiKey={apiKey} />
+```
+
+Use `contentSource` if you want to label the bubble as tool-produced in your own
+UI; a custom `assistantMessageRenderer` receives the full message and can read
+it:
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    assistantMessageRenderer: ({ message, content }) => (
+      <>
+        <Markdown>{content}</Markdown>
+        {message.contentSource === 'finish_tool' && <Badge>via finish tool</Badge>}
+      </>
+    ),
+  }}
+/>
 ```
 
 ### Behaviour with your own finish tool
