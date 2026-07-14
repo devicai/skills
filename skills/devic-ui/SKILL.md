@@ -405,6 +405,77 @@ const {
 } = useDevicChat({ assistantId, modelInterfaceTools: tools });
 ```
 
+## Require Tool Use to Finish
+
+An assistant can be configured to end every turn by calling a tool instead of
+replying with plain text. This solves assistants that run their tool calls and
+then trail off without producing a final answer.
+
+### Configuration (platform UI)
+
+It is a property of the assistant, not of the drawer — there is nothing to pass
+to `<ChatDrawer>`. In the Devic platform:
+
+**Assistant → Context Management → "Require Tool Use to Finish"**
+
+| Setting | Meaning |
+| --- | --- |
+| Toggle | Enables the mode for this assistant |
+| Finish tool | Which tool ends the turn. Defaults to the built-in `finish_execution`; any of the assistant's own tools can be selected instead |
+
+> ⚠️ **This mode forces the model to call a tool in order to finish.** The
+> backend sends `tool_choice: 'required'`, so the model *cannot* end a turn with
+> plain text — every turn must terminate in a tool call. Consequences worth
+> weighing before enabling it:
+>
+> - **Every turn spends an extra tool call**, which adds tokens and one more
+>   round trip of latency to each answer.
+> - **Smaller / weaker models struggle with it.** If the model cannot reliably
+>   satisfy `tool_choice: 'required'`, the turn keeps calling tools until the
+>   chat message limit kicks in. Test with your target model before rolling out.
+> - **It only applies to assistants**, never to agent threads.
+> - If the configured finish tool ends up unavailable (excluded by the
+>   `enabledTools` whitelist, or its tool group / server disabled), the backend
+>   falls back to `finish_execution` so the model always has a way out.
+
+### Behaviour with the default `finish_execution`
+
+The tool takes a single `message` argument holding the final answer (Markdown
+supported). The backend intercepts the call, copies `message` into the
+assistant message's `content.message`, and emits the tool response itself.
+
+devic-ui renders it as a **normal assistant bubble** — no tool activity line for
+`finish_execution`, since it is how the answer is delivered rather than an action
+the assistant took (≥ 0.35.0; earlier versions showed a stray `finish_execution`
+entry under the answer). Nothing to configure:
+
+```tsx
+// The assistant has requiredToolUse enabled — the drawer needs no extra props.
+<ChatDrawer assistantId="my-assistant" apiKey={apiKey} />
+```
+
+### Behaviour with your own finish tool
+
+The selected tool runs normally and then ends the turn. Two differences from the
+default that bite in practice:
+
+- **Nothing is promoted to a bubble.** Only `finish_execution` has its `message`
+  copied to `content.message`, so the visible reply is whatever text the model
+  emitted alongside the tool call — often nothing. Render the call yourself with
+  `toolRenderers` (see [Custom Tool Renderers](#custom-tool-renderers)) if it
+  should show up in the thread.
+- **The model never sees the tool's result.** The turn ends right after the tool
+  runs, so its output cannot influence the answer. Use it for delivery/side
+  effects, not for something the model must read back.
+
+### Combining with client-side widgets
+
+This mode and Model Interface widgets compose without any extra wiring: the model
+calls your MIP tool (the turn pauses and the widget renders), you submit the
+response, the turn resumes, and the model then calls the finish tool to close.
+They never collide — `finish_execution` is a backend built-in and never enters
+the client-side tool path.
+
 ## Custom Chat UI with Hooks
 
 Build a completely custom chat interface:
