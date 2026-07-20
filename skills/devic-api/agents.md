@@ -62,20 +62,26 @@ The Agents API allows you to manage autonomous AI agents that execute multi-step
 
 ## Thread States
 
-Threads can be in one of the following states:
+Threads can be in one of the following states. **The values are lowercase**, and
+they are compared literally — sending `COMPLETED` where `completed` is expected
+will not match on a filter, and will not be understood as a state when writing.
 
 | State | Description |
 |-------|-------------|
-| `PENDING` | Thread created, not yet started |
-| `PROCESSING` | Thread is actively executing |
-| `WAITING_APPROVAL` | Thread paused awaiting user approval |
-| `PAUSED` | Thread manually paused |
-| `COMPLETED` | Thread finished successfully |
-| `FAILED` | Thread encountered an error |
-| `CANCELLED` | Thread was cancelled |
-| `HANDED_OFF` | Thread is waiting for one or more subagent threads to complete |
-| `TERMINATED` | Thread was terminated by the user |
-| `LIMIT_EXCEEDED` | Thread blocked by a tenant usage limit before execution (terminal — not resumed by the cron). See [tenants.md](tenants.md) |
+| `queued` | Thread created and waiting to be picked up for execution |
+| `processing` | Thread is actively executing |
+| `completed` | Thread finished successfully |
+| `failed` | Thread encountered an error |
+| `terminated` | Thread was terminated by the user |
+| `paused` | Thread manually paused |
+| `paused_for_approval` | Thread paused awaiting user approval |
+| `approval_rejected` | Approval was rejected without a retry (terminal) |
+| `waiting_for_response` | Waiting on an external reply (channel message or async tool response) |
+| `paused_for_resume` | Paused with a scheduled resumption |
+| `handed_off` | Thread is waiting for one or more subagent threads to complete |
+| `guardrail_trigger` | Execution stopped by a guardrail |
+| `under_construction` | Thread is still being created |
+| `limit_exceeded` | Thread blocked by a tenant usage limit before execution (terminal — not resumed by the cron). See [tenants.md](tenants.md) |
 
 ---
 
@@ -87,10 +93,10 @@ Agents can delegate work to other agents (subagents) during execution via the `h
 
 1. An agent configured with `subagentsIds` in its `assistantSpecialization` can invoke the `hand_off_subagent` tool during execution
 2. A **subthread** is created for the target subagent, linked to the parent thread
-3. The parent thread transitions to `HANDED_OFF` state
+3. The parent thread transitions to `handed_off` state
 4. The subagent executes independently in its own thread
 5. When the subagent calls `finish_execution`, the result is appended to the parent thread as a tool response
-6. If all pending subthreads have completed, the parent thread transitions back to `QUEUED` and resumes execution
+6. If all pending subthreads have completed, the parent thread transitions back to `queued` and resumes execution
 
 ### Parallel Subagent Handoffs
 
@@ -98,7 +104,7 @@ An agent can hand off to **multiple subagents in parallel**. The parent thread t
 
 ### Subthread Termination
 
-If a user terminates a subthread (via the Complete endpoint with state `TERMINATED`), the parent thread is automatically notified with a tool response containing `"Terminated by the user"`, and the subthread is removed from the pending list.
+If a user terminates a subthread (via the Complete endpoint with state `terminated`), the parent thread is automatically notified with a tool response containing `"Terminated by the user"`, and the subthread is removed from the pending list.
 
 ---
 
@@ -131,7 +137,7 @@ The `assistantSpecialization` defines the agent's behavior, tools, and capabilit
 | `identifier` | string | Unique specialization identifier |
 | `name` | string | Specialization name |
 | `presets` | string | System prompt / instructions |
-| `availableToolsGroupsUids` | string[] | Tool group IDs the agent can use |
+| `availableToolsGroupsUids` | string[] | Tools the agent can use: built-in tool group UIDs and/or the `_id` of custom tool servers, in the same array. See [tool-servers.md](tool-servers.md) |
 | `enabledTools` | string[] \| null | Explicit subset of enabled tool names. `null` enables every tool of the assigned groups, `[]` enables none |
 | `model` | string | Default model |
 | `provider` | string | Default LLM provider |
@@ -306,7 +312,7 @@ POST /api/v1/agents
 | Field | Type | Description |
 |-------|------|-------------|
 | `presets` | string | System prompt / instructions |
-| `availableToolsGroupsUids` | string[] | Tool group IDs the agent can use |
+| `availableToolsGroupsUids` | string[] | Tools the agent can use: built-in tool group UIDs and/or the `_id` of custom tool servers, in the same array. See [tool-servers.md](tool-servers.md) |
 | `enabledTools` | string[] \| null | Explicit subset of enabled tool names. `null` enables every tool of the assigned groups, `[]` enables none |
 | `model` | string | Default model |
 | `provider` | string | Default LLM provider |
@@ -525,7 +531,7 @@ curl -X POST "https://api.devic.ai/api/v1/agents/agent-123/threads" \
   "data": {
     "threadId": "thread-456",
     "agentId": "agent-123",
-    "state": "PROCESSING",
+    "state": "processing",
     "message": "Analyze the Q4 sales report and create a summary",
     "createdAt": "2024-01-15T10:00:00.000Z"
   }
@@ -539,7 +545,7 @@ curl -X POST "https://api.devic.ai/api/v1/agents/agent-123/threads" \
 | 404 | Agent not found |
 | 429 | Tenant usage limit exceeded — `error: "TENANT_LIMIT_EXCEEDED"` (see below) |
 
-When the thread's `tenantId`/`subtenantId` has a configured usage limit that is already consumed, thread creation is blocked **before** the LLM call and returns HTTP `429` with a structured body (`details.blockingRule`/`current`/`limit`/`resetsAt`) plus a `Retry-After` header — identical in shape to the assistant 429 documented in [assistants.md](assistants.md). The blocked thread is also persisted with state `LIMIT_EXCEEDED` (terminal; the resumption cron does not retry it) so it is visible in the thread list. See [tenants.md](tenants.md) for the usage-limit model.
+When the thread's `tenantId`/`subtenantId` has a configured usage limit that is already consumed, thread creation is blocked **before** the LLM call and returns HTTP `429` with a structured body (`details.blockingRule`/`current`/`limit`/`resetsAt`) plus a `Retry-After` header — identical in shape to the assistant 429 documented in [assistants.md](assistants.md). The blocked thread is also persisted with state `limit_exceeded` (terminal; the resumption cron does not retry it) so it is visible in the thread list. See [tenants.md](tenants.md) for the usage-limit model.
 
 ---
 
@@ -570,7 +576,7 @@ GET /api/v1/agents/:agentId/threads
 ### Example Request
 
 ```bash
-curl -X GET "https://api.devic.ai/api/v1/agents/agent-123/threads?state=COMPLETED&limit=20&tags=urgent,review" \
+curl -X GET "https://api.devic.ai/api/v1/agents/agent-123/threads?state=completed&limit=20&tags=urgent,review" \
   -H "Authorization: Bearer devic-your-api-key"
 ```
 
@@ -584,7 +590,7 @@ curl -X GET "https://api.devic.ai/api/v1/agents/agent-123/threads?state=COMPLETE
       {
         "threadId": "thread-456",
         "agentId": "agent-123",
-        "state": "COMPLETED",
+        "state": "completed",
         "message": "Task description",
         "createdAt": "2024-01-15T10:00:00.000Z",
         "completedAt": "2024-01-15T10:15:00.000Z",
@@ -624,7 +630,7 @@ GET /api/v1/agents/threads/:threadId
   "data": {
     "threadId": "thread-456",
     "agentId": "agent-123",
-    "state": "PROCESSING",
+    "state": "processing",
     "message": "Analyze the Q4 sales report",
     "createdAt": "2024-01-15T10:00:00.000Z",
     "tags": ["sales"],
@@ -738,7 +744,7 @@ POST /api/v1/agents/threads/:threadId/complete
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `state` | string | Yes | Final state (`COMPLETED`, `FAILED`, `CANCELLED`, `TERMINATED`) |
+| `state` | string | Yes | Final state — one of `completed`, `failed`, `terminated` |
 
 ---
 
@@ -757,7 +763,7 @@ POST /api/v1/agents/threads/:threadId/pause
   "success": true,
   "data": {
     "threadId": "thread-456",
-    "state": "PAUSED",
+    "state": "paused",
     "pausedAt": "2024-01-15T10:10:00.000Z"
   }
 }
