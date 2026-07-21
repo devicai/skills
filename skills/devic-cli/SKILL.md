@@ -421,11 +421,24 @@ devic agents costs summary <agentId>
 
 Manage tool servers, their definitions, and individual tools.
 
+Three kinds of tool server, told apart by the `type` column: `http` (tool
+definitions you wrote, called against a base URL), `mcp` (a remote MCP server),
+and `integration` (an app connected in Devic — Gmail, Drive, HubSpot). An
+integration has no URL and no stored definition; its tools live in the connected
+app, and the `target` column names that app, with `(not connected)` when no
+account is linked.
+
+Credentials come back masked (`••••••••`). Sending a masked value back in an
+update keeps the stored secret, so `get` → edit → `update` is safe; send a real
+value to change it.
+
 #### devic tool-servers list
 
 ```bash
-devic tool-servers list [--offset <n>] [--limit <n>]
+devic tool-servers list [--offset <n>] [--limit <n>] [--project <project>]
 ```
+
+`--project` accepts an `_id`, an identifier, or a name.
 
 #### devic tool-servers get
 
@@ -482,8 +495,14 @@ Manage individual tools within a tool server.
 #### devic tool-servers tools list
 
 ```bash
-devic tool-servers tools list <toolServerId>
+devic tool-servers tools list <toolServerId> [--available] [--limit <n>] [--cursor <cursor>]
 ```
+
+Lists the tools the server exposes. On an integration, `--available` browses
+everything the connected app offers instead, with an `enabled` column marking
+which of them this server uses. That catalogue is paged — follow the `--cursor`
+the output suggests rather than counting against the total, which includes tools
+the app has deprecated and are not listed.
 
 #### devic tool-servers tools get
 
