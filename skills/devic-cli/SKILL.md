@@ -1,6 +1,6 @@
 ---
 name: devic-cli
-description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, building agent workflows that interact with assistants, agents, tool servers, documents and feedback, or installing/updating Devic skills into local coding agents (claude-code, codex, cursor, opencode, cline)."
+description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, building agent workflows that interact with assistants, agents, tool servers, documents and feedback, or creating, browsing and installing Devic skills (including into local coding agents: claude-code, codex, cursor, opencode, cline)."
 ---
 
 # @devicai/cli
@@ -548,11 +548,18 @@ Manage knowledge documents (markdown). List, read, create, update and manage ver
 ```bash
 devic documents list [--project <p>] [--folder <id>] [--file-type md]
 devic documents get <documentId>
-devic documents create --name <name> [content source]
-devic documents update <documentId> [fields...]
+devic documents create --name <name> [content source] [--folder <id>] [--tags <t...>] [--as-skill]
+devic documents update <documentId> [fields...] [--tags <t...>] [--as-skill|--no-skill]
 devic documents versions list <documentId>
 devic documents versions revert <documentId> <version>
+devic documents attach <documentId> --target-type agent|assistant|environment --target-id <id>
+devic documents usage <documentId>
+devic documents folders create --name <name> [--as-skill] [--tags <t...>]
 ```
+
+`--folder` on `create`, `--tags` and `--as-skill`/`--no-skill` require **CLI ≥ 0.18.0**.
+`--as-skill` publishes the document in the skills catalog; its name and
+description then come from the YAML frontmatter at the top of the markdown.
 
 #### Providing document content (create / update)
 
@@ -592,7 +599,7 @@ be refreshed with `update`.
 List the skills catalog.
 
 ```bash
-devic skills list [--tag <tag...>] [--search <text>] [--project <projectId>]
+devic skills list [--tag <tag...>] [--search <text>] [--project <projectId>] [--limit <n>] [--page <n>]
 ```
 
 | Option | Description |
@@ -600,10 +607,58 @@ devic skills list [--tag <tag...>] [--search <text>] [--project <projectId>]
 | `--tag <tag...>` | Filter by tag (repeatable, e.g. `--tag cli --tag qa`) |
 | `--search <text>` | Free-text search over name/description |
 | `--project <projectId>` | Filter by project id |
+| `--limit <n>` | Page size (max 200, default 100) — CLI ≥ 0.18.0 |
+| `--page <n>` | 1-based page number — CLI ≥ 0.18.0 |
 
 Human output shows a table with id, name, type (`document`/`folder`), tags, and
 usage stats: linked **agents**, **assistants**, and **reads** (how often the skill
 was consulted by agents via the knowledge tools).
+
+#### devic skills create
+
+Create a **folder-skill**: the folder plus its `SKILL.md` manifest, with the
+`name`/`description` frontmatter already written. Requires **CLI ≥ 0.18.0**.
+
+```bash
+devic skills create <name> [-d <description>] [--tags <t...>] [--project <projectId>] [--parent <folderId>] [--from-file <path>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-d, --description <text>` | One-line description. It is what the model reads before deciding to load the skill, so phrase it as a trigger (*"How to … when …"*) |
+| `--tags <tags...>` | Category tags |
+| `--project <projectId>` | Scope the skill to a project |
+| `--parent <folderId>` | Create it inside an existing folder |
+| `--from-file <path>` | Replace the generated stub manifest with your own markdown |
+
+The output prints the folder id — that is what you attach as
+`knowledgeSkills: [{ id, type: "folder" }]` — and the manifest document id.
+
+```bash
+devic skills create "Incident triage" -d "How to triage a production incident." --tags ops
+devic skills create "Release drill" --from-file ./SKILL.md
+```
+
+#### devic skills get
+
+Show one catalog entry (by id or name), including its tags and usage counts.
+Requires **CLI ≥ 0.18.0**.
+
+```bash
+devic skills get <id|name>
+```
+
+#### devic skills tree
+
+Show the files a skill contains — what an install would download — **without**
+recording an install. Requires **CLI ≥ 0.18.0**.
+
+```bash
+devic skills tree <id|name> [--out <dir>]
+```
+
+`--out <dir>` also writes the files to disk, preserving their relative paths.
+Useful to inspect or diff a skill before installing it.
 
 #### devic skills tags
 
