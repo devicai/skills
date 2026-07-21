@@ -1,6 +1,6 @@
 ---
 name: devic-api
-description: Devic AI Platform API reference for assistants, agents, tool servers, and tenants (multi-tenant cost & usage limits). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
+description: Devic AI Platform API reference for assistants, agents, tool servers, knowledge documents and skills, and tenants (multi-tenant cost & usage limits). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
 ---
 
 # Devic API
@@ -239,7 +239,20 @@ Manage the tenants and subtenants of your account for multi-tenant products, rea
 
 For detailed documentation, see [tenants.md](tenants.md).
 
-### 8. Built-in Tools Reference
+### 8. Documents & Skills API
+
+Manage the knowledge your assistants and agents read at runtime, and the skills built on top of it.
+
+- Create, version and organise markdown documents and folders
+- Attach documents or folders to an assistant, an agent or an environment
+- Publish a document or folder as a **skill**: its name and description go into the system prompt and the model loads the full instructions on demand
+- Scaffold a folder-skill (folder + `SKILL.md`) in one call, browse the skills catalog, download a skill tree
+
+**Base paths:** `/api/v1/documents` · `/api/v1/document-folders`
+
+For detailed documentation, see [documents.md](documents.md).
+
+### 9. Built-in Tools Reference
 
 List of all built-in tool groups with their UIDs, ready to use in `availableToolsGroupsUids`.
 
