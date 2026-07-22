@@ -65,14 +65,47 @@ devic integrations connect gmail --wait --tools GMAIL_GET_PROFILE
 `--tools` limits which of the app's tools the server exposes; omit it to expose
 all of them (a large prompt on every message — narrowing is recommended).
 
-The resulting server shows up in `devic tool-servers list` as
-`type=integration`. Its provider account id never appears — it is resolved
-server-side.
+The resulting integration also shows up in `devic tool-servers list` as
+`type=integration`, but manage it through `integrations` (below), not
+`tool-servers` — that group is for MCP and custom servers. Its provider account
+id never appears; it is resolved server-side.
 
 > **Multiple accounts of the same app:** `--finalize` binds the most recently
 > authorized account for that app. Choosing among several accounts of one app is
 > not available from the CLI (the account ids are not exposed); connect and
 > finalize one at a time.
+
+### The integrations you have connected
+
+```bash
+devic integrations connected      # id, app, account state, exposed-tool count
+```
+
+This is where the **integration id** for the tools commands comes from — you do
+not need `tool-servers list`.
+
+### Changing which tools an integration exposes
+
+You can widen or narrow the exposed tools after connecting, without
+reconnecting. Empty selection means **all** of the app's tools.
+
+```bash
+devic integrations tools list <id>              # what it exposes now
+devic integrations tools list <id> --available  # the app's whole catalogue, marking enabled
+
+devic integrations tools enable <id> GMAIL_SEND_EMAIL GMAIL_CREATE_EMAIL_DRAFT
+devic integrations tools disable <id> GMAIL_SEND_EMAIL
+devic integrations tools enable <id> --all      # expose every tool the app has
+```
+
+`enable`/`disable` are incremental (they add to / remove from the current
+selection). Two edges follow from "empty means all": `enable` on an integration
+that already exposes all is a no-op, and a `disable` that would remove the last
+tool is refused — keep at least one, or use `--all` to expose all on purpose.
+Only the tool selection changes; the connected account is never touched.
+
+Worth narrowing: a whole toolkit is dozens of tools whose schemas are re-sent on
+every message (Gmail's ≈ 8.6k prompt tokens).
 
 ---
 
