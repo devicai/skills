@@ -103,6 +103,7 @@ GET /api/v1/tool-servers
 |-----------|------|---------|-------------|
 | `offset` | number | 0 | Number of items to skip |
 | `limit` | number | 10 | Maximum items to return (max: 100) |
+| `projectId` | string | - | Only tool servers belonging to this project |
 
 ### Example Request
 
@@ -134,6 +135,50 @@ curl -X GET "https://api.devic.ai/api/v1/tool-servers?limit=20" \
   }
 }
 ```
+
+### Server types
+
+`type` says where a server's tools come from, which is not otherwise derivable:
+an integration has no `url` and no `identifier`.
+
+| `type` | Tools come from | Notes |
+|--------|-----------------|-------|
+| `http` | Tool definitions you supply, called against `url` | |
+| `mcp` | A remote MCP server | |
+| `integration` | An app connected in Devic (Gmail, Drive, HubSpot...) | see below |
+
+For an `integration`, an `integration` object describes the connected app:
+
+```json
+{
+  "_id": "65a1b2c3d4e5f6789012399",
+  "name": "Gmail",
+  "enabled": true,
+  "type": "integration",
+  "integration": {
+    "app": "gmail",
+    "apps": ["gmail"],
+    "connected": true,
+    "enabledToolCount": 3
+  }
+}
+```
+
+`connected: false` means no account is linked and nothing can run.
+`enabledToolCount` is absent when the server exposes every tool the app has.
+
+Note that `total` is the size of the whole collection, not of the page.
+
+### Credentials
+
+`authenticationConfig` comes back with its secrets replaced by a mask
+(`••••••••`): passwords, tokens, refresh tokens, client secrets and custom
+header values. Everything else — the method, the username, the endpoints — is
+returned as stored.
+
+Sending a masked value back in a create or update **keeps the stored secret**,
+so the ordinary read-modify-write round trip is safe. Send a real value to
+change a secret, or an empty string to clear it.
 
 ---
 
@@ -304,11 +349,55 @@ The cloned server will have "(Copy)" appended to its name.
 
 ## List Tools in Server
 
-Retrieves all tool definitions from a tool server.
+Retrieves the tools a server exposes.
 
 ```
 GET /api/v1/tool-servers/:toolServerId/tools
 ```
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `available` | boolean | false | Integrations only: list every tool the connected app offers instead of only the exposed ones |
+| `limit` | number | - | Page size when browsing a catalogue (`available=true`) |
+| `cursor` | string | - | Page token from a previous response's `nextCursor` |
+
+### App integrations
+
+An integration has no stored tool definitions: its tools are resolved from the
+connected app. By default this endpoint returns the tools **the server
+exposes** — the same set the model is offered.
+
+Pass `available=true` to browse the app's whole catalogue instead, to find
+something worth turning on. There each tool carries `enabled`, saying whether
+this server exposes it, and the response is paged:
+
+```bash
+curl -X GET "https://api.devic.ai/api/v1/tool-servers/<id>/tools?available=true&limit=50" \
+  -H "Authorization: Bearer devic-your-api-key"
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "tools": [
+      {
+        "type": "function",
+        "function": { "name": "GMAIL_SEND_EMAIL", "description": "...", "parameters": {} },
+        "enabled": false
+      }
+    ],
+    "total": 63,
+    "nextCursor": "Mi01"
+  }
+}
+```
+
+Page with `nextCursor`, not with `total`: when browsing a catalogue, `total` is
+the app's own count and includes tools the provider has deprecated, which are
+not offered here.
 
 ### Response
 
