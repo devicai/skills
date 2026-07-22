@@ -560,6 +560,24 @@ The JSON file should contain the parameters object: `{"city": "London"}`.
 
 ---
 
+### devic integrations / devic triggers
+
+Browse the catalogue of connectable apps (Gmail, Drive, HubSpot, …) and the
+events each emits, connect an account, and manage the triggers that start an
+agent or assistant from those events.
+
+```bash
+devic integrations list --search gmail
+devic integrations triggers gmail                 # an app's event types
+devic integrations connect gmail --wait           # connect + build the tool server
+devic triggers create --tool-server <id> --agent <id> --trigger GMAIL_NEW_GMAIL_MESSAGE
+devic triggers events <id>
+```
+
+For detailed documentation, see [integrations-and-triggers.md](integrations-and-triggers.md).
+
+---
+
 ### devic documents
 
 Manage knowledge documents (markdown). List, read, create, update and manage versions.
