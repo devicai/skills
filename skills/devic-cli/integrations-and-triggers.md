@@ -49,18 +49,26 @@ The detail view returns two JSON Schemas:
 ### Connecting an account
 
 Connecting is a browser OAuth flow, so it runs in two steps: authorize in a
-browser, then build the tool server.
+browser, then build the tool server. **Step 1 alone does not create anything** —
+it only returns the authorization URL. The integration is inactive until step 2
+builds its tool server, so `--finalize` (or `--wait`) is not optional.
 
 ```bash
 # 1. Get the authorization URL, open it, authorize the account
 devic integrations connect gmail
 
-# 2a. Build the tool server once authorized
+# 2a. Build the tool server once authorized (required — this is what activates it)
 devic integrations connect gmail --finalize --name "Gmail" --tools GMAIL_GET_PROFILE,GMAIL_SEND_EMAIL
 
 # 2b. Or do both in one call — polls until the account is active, then builds it
 devic integrations connect gmail --wait --tools GMAIL_GET_PROFILE
 ```
+
+Use `--wait` when the same session drives the whole flow; use bare `connect`
+then `--finalize` when someone else authorizes in the browser (open the URL, let
+them authorize, then finalize). Either way, an account authorized in the browser
+does **not** appear in `devic integrations connected` until its server is built —
+an empty list right after authorizing means "not finalized yet", not a failure.
 
 `--tools` limits which of the app's tools the server exposes; omit it to expose
 all of them (a large prompt on every message — narrowing is recommended).
