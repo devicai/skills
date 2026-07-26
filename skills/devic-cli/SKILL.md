@@ -454,6 +454,22 @@ devic tool-servers create [--name <name>] [--url <url>] [--description <desc>] [
 
 The `--from-json` payload supports: `name`, `description`, `url`, `identifier`, `enabled`, `mcpType`, `toolDefinitions`, `authenticationConfig`, `imageUrl`.
 
+`url`, each tool's `endpoint` and the advanced body template accept `{{...}}`
+template references resolved at call time, so one tool server can target a
+different upstream per environment instead of being cloned:
+
+- `{{metadata.<field>}}` — thread or chat metadata (bare `{{field}}` is the same thing)
+- `{{env.<VAR>}}` — env var of the Environment connected to the agent or assistant
+- `{{fields.<apiName>}}` — published-MCP connection field, resolved by the wrapper only
+
+Unknown references resolve to an empty string. Do not confuse these with the
+`${arg}` / `{arg}` placeholders in `endpoint`, which are tool arguments the model
+supplies.
+
+```bash
+devic tool-servers create --name "Billing API" --url 'https://{{env.BILLING_HOST}}'
+```
+
 #### devic tool-servers update
 
 ```bash

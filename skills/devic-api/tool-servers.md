@@ -69,7 +69,7 @@ Assistant Specialization
 | `_id` | string | Unique identifier |
 | `name` | string | Display name |
 | `description` | string | Purpose description |
-| `url` | string | Base URL for API calls |
+| `url` | string | Base URL for API calls. Accepts template references — see [Template references](#template-references) |
 | `identifier` | string | URL-friendly identifier |
 | `enabled` | boolean | Whether tools are active |
 | `toolServerDefinitionId` | string | Link to tool definitions |
@@ -83,9 +83,62 @@ When an assistant or agent needs to call a tool:
 1. AI model decides to use a tool based on the user request
 2. Platform looks up the tool in the agent's available tool groups
 3. Finds the tool server associated with that tool
-4. Constructs the HTTP request using tool definition (endpoint, method, parameters)
-5. Applies authentication from `authenticationConfig`
-6. Executes the request and returns response to the AI model
+4. Resolves any `{{...}}` template reference in the base URL, the endpoint and the body template
+5. Constructs the HTTP request using tool definition (endpoint, method, parameters)
+6. Applies authentication from `authenticationConfig`
+7. Executes the request and returns response to the AI model
+
+---
+
+## Template references
+
+The base URL, the tool `endpoint`, the advanced body template (`bodyJsonTemplate`)
+and every value in `authenticationConfig` accept `{{namespace.name}}` references
+resolved at call time. This is what lets ONE tool server — and therefore one
+published MCP — serve several environments, instead of cloning the server per
+environment.
+
+| Reference | Resolved from | Available on |
+|-----------|---------------|--------------|
+| `{{metadata.<field>}}` | Thread or chat `metadata` sent by whoever started the run. Dot notation walks nested objects (`{{metadata.tenant.region}}`) | Internal path (a Devic agent or assistant calls the tool) |
+| `{{<field>}}` | Shorthand for `{{metadata.<field>}}` — the form the authentication config has always used | Internal path |
+| `{{env.<VAR>}}` | Env var of the Environment connected to the agent or assistant | Internal path |
+| `{{fields.<apiName>}}` | Value the end user typed on the OAuth-proxy connection screen | Published MCP only — resolved by the mcp-api-wrapper |
+
+Rules:
+
+- **An unknown reference resolves to an empty string.** `https://{{env.API_HOST}}/v1`
+  with no `API_HOST` produces `https:///v1`, not a URL with literal braces. Empty
+  path segments are collapsed, so `/{{metadata.region}}/study/42` becomes `/study/42`.
+- **`{{...}}` is resolved before `${arg}` / `{arg}`.** Those two are tool *arguments*
+  supplied by the model; `{{...}}` references never come from the model.
+- **`{{fields.*}}` is not resolved on the internal path** — it collapses to empty
+  there. Conversely the wrapper does not resolve `{{metadata.*}}` or `{{env.*}}`, so
+  a tool server published as a public MCP should not rely on them in its URL.
+- Cached tool results are keyed by the resolved target, so two environments never
+  share a cached response.
+
+Example — one tool server, one upstream per environment:
+
+```json
+{
+  "name": "Billing API",
+  "url": "https://{{env.BILLING_HOST}}",
+  "toolDefinitions": [
+    {
+      "type": "function",
+      "function": { "name": "get_invoice", "parameters": { "type": "object", "properties": { "invoiceId": { "type": "string" } } } },
+      "endpoint": "/{{metadata.region}}/invoices/${invoiceId}",
+      "method": "POST",
+      "bodyMode": "advanced",
+      "bodyJsonTemplate": "{ invoiceId: params.invoiceId, stage: env.STAGE, tenant: metadata.tenantSlug }"
+    }
+  ]
+}
+```
+
+In the advanced body template, `metadata` and `env` are exposed as objects next
+to `params` (the tool arguments).
 
 ---
 
@@ -538,6 +591,8 @@ POST /api/v1/tool-servers/:toolServerId/tools/:toolName/test
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `parameters` | object | Yes | Parameters to pass to the tool |
+| `metadata` | object | No | Values for `{{metadata.*}}` references (and the bare `{{field}}` shorthand) |
+| `envVars` | object | No | Values for `{{env.*}}` references. At runtime these come from the connected Environment; there is none on the test path, so supply them here |
 
 ### Example Request
 
@@ -548,7 +603,9 @@ curl -X POST "https://api.devic.ai/api/v1/tool-servers/server-123/tools/get_weat
   -d '{
     "parameters": {
       "city": "London"
-    }
+    },
+    "metadata": { "region": "eu-west" },
+    "envVars": { "API_HOST": "staging.weather.example.com" }
   }'
 ```
 
