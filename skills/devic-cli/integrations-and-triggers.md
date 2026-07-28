@@ -115,6 +115,38 @@ Only the tool selection changes; the connected account is never touched.
 Worth narrowing: a whole toolkit is dozens of tools whose schemas are re-sent on
 every message (Gmail's ≈ 8.6k prompt tokens).
 
+### Testing a tool before an agent depends on it
+
+```bash
+devic integrations tools test <id> GMAIL_GET_PROFILE                     # no arguments
+echo '{"max_results":3}' | devic integrations tools test <id> GMAIL_FETCH_EMAILS --from-json -
+```
+
+It runs the tool once through the same call path the engine uses, so what you
+read back is what the agent would receive: the app is resolved the same way, the
+same connected account is used, and a broken connection surfaces the same
+message. It answers the two questions worth asking before wiring an agent — *is
+this account really working*, and *what shape does this tool return* — without
+creating an agent to find out.
+
+> **It is a real call on real data.** There is no sandbox: `GMAIL_SEND_EMAIL`
+> sends the email, `GITHUB_CREATE_AN_ISSUE` opens the issue. Composio slugs say
+> what they do, so pick the read-only ones (`*_GET_*`, `*_LIST_*`, `*_FETCH_*`,
+> `*_SEARCH_*`) to validate a connection, and test a writing tool only when the
+> user has asked for it, on disposable data, after telling them what will appear
+> in their account.
+
+Reading the outcome:
+
+| What you get | What it means |
+|---|---|
+| `success: true` with `data` | the tool works for this account; the payload is what lands in the model's context |
+| `success: false` with an app error | the connection is fine, the **arguments** are not — the app's own message names the offending field |
+| `success: false` + *"the connection itself is the problem"* | the account is expired or revoked. Reconnect it (`devic integrations connect <app>`); nothing about the tool is wrong |
+| `400` *"does not expose it"* | the tool exists in the app but this integration does not expose it — `tools enable` it first, or test one it does expose |
+| `404` *"No tool …"* | the slug does not exist in the app. Find the real one with `tools list <id> --available` |
+| `400` *"is not an app integration"* | that id is an MCP or custom tool server. Its tools are tested with `devic tool-servers tools test` |
+
 ---
 
 ## Triggers

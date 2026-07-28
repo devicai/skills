@@ -586,6 +586,13 @@ Executes a tool call with provided parameters for testing.
 POST /api/v1/tool-servers/:toolServerId/tools/:toolName/test
 ```
 
+> **App integrations use their own endpoint.** This one runs a stored tool
+> definition, and an integration has none — its tools live at the provider — so
+> it answers `404 … does not have a tool definition`. Test those with
+> `POST /api/v1/integrations/servers/:id/tools/:toolSlug/test`
+> (`devic integrations tools test <id> <SLUG>`), which runs the tool against the
+> connected account. Remote MCP and proxy servers are not testable from either.
+
 ### Request Body
 
 | Field | Type | Required | Description |
