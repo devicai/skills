@@ -148,9 +148,42 @@ Configures how an agent behaves when invoked as a subagent by another agent.
 |----------|------|-------------|
 | `enabled` | boolean | Whether this agent can be invoked as a subagent |
 | `inputFormat` | string | Input format: `"text"` or `"json"` |
-| `inputStructure` | object | JSON Schema defining the expected input structure (when `inputFormat` is `"json"`) |
+| `inputStructure` | object | Expected input (when `inputFormat` is `"json"`). The JSON Schema goes **under a `parameters` key** |
 | `outputFormat` | string | Output format: `"text"` or `"json"` |
-| `outputStructure` | object | JSON Schema defining the expected output structure (when `outputFormat` is `"json"`) |
+| `outputStructure` | object | Expected output (when `outputFormat` is `"json"`). Same shape: the JSON Schema **under `parameters`** |
+
+`enabled: true` is the prerequisite for any other agent or assistant to list
+this one in `subagentsIds` — that field is validated, and a callee without it is
+rejected with `INVALID_SUBAGENTS` / `NOT_ENABLED`. Configure the callee first,
+then reference it.
+
+The structures are not bare JSON Schemas. The schema is read from `parameters`,
+and a structure without that key is rejected with `INVALID_SUBAGENT_CONFIG`:
+
+```json
+{
+  "subAgentConfig": {
+    "enabled": true,
+    "inputFormat": "json",
+    "inputStructure": {
+      "name": "repo_summary_input",
+      "description": "What to summarise",
+      "strict": true,
+      "parameters": {
+        "type": "object",
+        "properties": { "repo": { "type": "string", "description": "owner/name" } },
+        "required": ["repo"],
+        "additionalProperties": false
+      }
+    },
+    "outputFormat": "text"
+  }
+}
+```
+
+On `PATCH` the object is **merged key by key** with what is stored, so flipping
+`enabled` does not erase the declared structures. To go back to free text set
+`"inputFormat": "text"` — omitting a key changes nothing.
 
 ### Tool Access
 
