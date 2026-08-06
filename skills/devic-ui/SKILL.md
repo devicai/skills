@@ -1,6 +1,6 @@
 ---
 name: devic-ui
-description: Devic UI is a react component library to integrate AI UI components like chats and agents executions handler directly in your code base connected to devicai API
+description: Devic UI is a react component library to integrate AI UI components like chats and agents executions handler directly in your code base connected to devicai API. Covers tenant sessions (signed credentials instead of an API key in the bundle) and connected apps.
 ---
 
 # Devic UI Integration Guide
@@ -11,7 +11,9 @@ This guide explains how to integrate the `@devicai/ui` library into your React a
 
 - Node.js 20+
 - React 17+ application
-- Devic API key (obtain from Devic dashboard)
+- Devic API key (obtain from Devic dashboard) — or, for a page real users reach,
+  a backend endpoint that mints tenant sessions (see
+  [tenant-sessions.md](tenant-sessions.md))
 
 ## Installation
 
@@ -50,6 +52,10 @@ function App() {
   );
 }
 ```
+
+> For anything user-facing, replace `apiKey` with `getTenantSession` — a key in
+> a bundle lets any visitor claim to be any of your customers. See
+> [Proving the tenant](#proving-the-tenant-tenant-sessions).
 
 ### Step 3: Add ChatDrawer Component
 
@@ -122,6 +128,92 @@ const { histories, total } = await client.listConversations('assistant-id', {
 ```
 
 Backed by the `subtenantId` query param on `GET /api/v1/assistants/:id/chats` (matched against the canonical `metadata.subtenantId`). Sending it against an older backend is harmless — unknown query params are ignored, so the list simply isn't subtenant-filtered.
+
+## Proving the tenant (tenant sessions)
+
+Everything above declares the tenant. In a browser that is a claim, not a fact:
+the `apiKey` is in your bundle, so anyone who reads it can put another
+customer's `tenantId` beside it and get their conversations back.
+`allowedDomains` narrows *where* a key works, never *who* is behind it.
+
+Since **0.41.0** the page can carry a short-lived token instead, minted by your
+backend from your own login. `apiKey` becomes optional — and should be absent:
+
+```tsx
+<DevicProvider
+  getTenantSession={async () => {
+    const r = await fetch('/api/devic-session', { credentials: 'include' });
+    return r.json();          // { token, expiresAt } — or the bare token string
+  }}
+  onSessionExpired={() => location.assign('/login')}
+>
+  <ChatDrawer assistantId="support-bot" />
+</DevicProvider>
+```
+
+The widget renews it on its own before expiry, and one session is shared by
+every component below the provider. The tenant inside the token is then imposed
+on path, query and body server-side, so `tenantId` props become redundant:
+passing the matching value is harmless, passing a different one answers `403`.
+
+Mint it on your server with a **server-side** key — the issuer refuses any
+request carrying an `Origin` header, or made with a key that has
+`allowedDomains`:
+
+```ts
+app.post('/api/devic-session', requireLogin, async (req, res) => {
+  const r = await fetch('https://api.devic.ai/api/v1/tenant-sessions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.DEVIC_API_KEY}`,
+               'Content-Type': 'application/json' },
+    body: JSON.stringify({                 // from YOUR session, never the body
+      tenantId: req.user.organisationId,
+      subtenantId: req.user.id,
+    }),
+  });
+  res.json(await r.json());
+});
+```
+
+Put that key in **`signed`** mode in the console and minting becomes the only
+thing it can do — every other `/api/v1` call with the key alone answers `401`.
+
+For the full guide — `createSharedSession` (≥ 0.41.1), sessions from a cookie
+with no renewal endpoint, what a session may reach, and the migration
+checklist — see [tenant-sessions.md](tenant-sessions.md).
+
+## Connected apps
+
+Where the **end user** connects their **own** third-party accounts to the
+assistant they are talking to (≥ 0.38.0). The drawer grows a stack of app logos
+in its header when the assistant offers apps to its tenants, and renders nothing
+— and requests nothing — when it does not:
+
+```tsx
+<ChatDrawer
+  assistantId="support-bot"
+  tenantId="acme-corp"
+  subtenantId="user-456"
+  options={{
+    showIntegrationsButton: true,     // default; false keeps it out entirely
+    integrationsLabel: 'Connected apps',
+    maxIntegrationLogos: 6,
+    showIntegrationsHint: true,       // strip above the composer, dismissible
+  }}
+/>
+```
+
+Since **0.42.0** it knows without asking: `GET /api/v1/assistants/:id` returns
+`tenantIntegrations: { enabled, count }` on the call the drawer already makes
+for its header, so an assistant offering nothing costs no extra request, and
+`count` holds the header's place while the listing arrives. An **absent** field
+(older backend) means *cannot tell*, not *no* — the listing is requested as
+before.
+
+`IntegrationsModal`, `IntegrationsLauncher`, `IntegrationsHint`,
+`IntegrationLogo` and `useIntegrations` are exported for your own UI, as are
+`useAssistantInfo` / `forgetAssistant` (the once-per-assistant cache behind the
+header). See [connected-apps.md](connected-apps.md).
 
 ## Conversation Tags
 
@@ -1223,8 +1315,23 @@ import type {
   // API types
   RealtimeChatHistory,  // Includes status (with 'handed_off') and handedOffSubThreadId
   RealtimeStatus,       // 'processing' | 'completed' | 'error' | 'waiting_for_tool_response' | 'handed_off'
-  AssistantSpecialization,
+  AssistantSpecialization, // Includes tenantIntegrations { enabled, count }
   WhisperTranscriptionResponse,
+  DevicApiClientConfig,
+  TenantSessionToken,   // { token, expiresAt?, expiresIn? }
+
+  // Assistant info cache (0.42.0)
+  UseAssistantInfoOptions,
+  AssistantInfoState,
+
+  // Connected apps
+  IntegrationsModalProps,
+  IntegrationsLauncherProps,
+  IntegrationsHintProps,
+  IntegrationLogoProps,
+  IntegrationsState,
+  IntegrationsScope,
+  UseIntegrationsOptions,
 
   // Feedback types
   FeedbackSubmission,
@@ -1247,6 +1354,18 @@ import type {
 
 // Import the AgentThreadState enum (value export)
 import { AgentThreadState, segmentToolCalls, useSpeechRecording } from '@devicai/ui';
+
+// Sessions, assistant info and connected apps (value exports)
+import {
+  createSharedSession,
+  useAssistantInfo,
+  forgetAssistant,
+  useIntegrations,
+  IntegrationsModal,
+  IntegrationsLauncher,
+  IntegrationsHint,
+  IntegrationLogo,
+} from '@devicai/ui';
 
 // Use types in your code
 const chatOptions: ChatDrawerOptions = {
@@ -1365,6 +1484,11 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `customPromptBox` | `(props: CustomPromptBoxProps) => ReactNode` | — | Replace the default input area with a custom component. Receives `sendMessage`, `transcribeAudio`, `stop`, `isLoading`, `newConversation` and reference helpers |
 | `userMessageRenderer` | `MessageBubbleRenderer` | — | Replace the built-in markdown renderer for **user** message bubbles. Receives `{ message, content, role, references }` |
 | `assistantMessageRenderer` | `MessageBubbleRenderer` | — | Replace the built-in markdown renderer for **assistant** message bubbles. Receives `{ message, content, role, references }` |
+| `showIntegrationsButton` | `boolean` | `true` | Allow the connected-apps control in the header. Shows only when the assistant offers apps. See [connected-apps.md](connected-apps.md) |
+| `integrationsLabel` | `string` | `'Connected apps'` | Tooltip / accessible name of that control |
+| `maxIntegrationLogos` | `number` | `6` | App logos before the rest are counted in a `+N` box |
+| `showIntegrationsHint` | `boolean` | `true` | Dismissible strip above the composer naming the connected apps. Ignored when the button is off |
+| `integrationsHintLabel` | `string` | — | Text on that strip. Unset: "Connect your apps" / "Explore connected apps" |
 
 ## Message Feedback
 
