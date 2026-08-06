@@ -1,6 +1,6 @@
 ---
 name: devic-api
-description: Devic AI Platform API reference for assistants, agents, tool servers, knowledge documents and skills, and tenants (multi-tenant cost & usage limits). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
+description: Devic AI Platform API reference for assistants, agents, tool servers, knowledge documents and skills, tenants (multi-tenant cost & usage limits) and tenant sessions (signed tokens for browser credentials). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
 ---
 
 # Devic API
@@ -31,6 +31,16 @@ Include the API key in the Authorization header:
 ```
 Authorization: Bearer devic-your-api-key-here
 ```
+
+### Credentials that reach a browser
+
+An API key states *which account* is calling, never *which of your customers*.
+Anywhere the key can be read — a bundle, a mobile app — the tenant beside it is
+a claim anyone can edit. For those, mint a **tenant session** on your server and
+send that as the bearer token instead: it carries the tenant in a signed claim
+and is imposed on every query. A key can also be restricted to `signed` mode, in
+which minting sessions is the only thing it can do. See
+[tenant-sessions.md](tenant-sessions.md).
 
 ### Example Request
 
@@ -252,7 +262,22 @@ Manage the knowledge your assistants and agents read at runtime, and the skills 
 
 For detailed documentation, see [documents.md](documents.md).
 
-### 9. Built-in Tools Reference
+### 9. Tenant Sessions API
+
+Short-lived tokens that **prove** which of your customers is calling, for
+credentials that end up in a browser. Your backend mints one from your own
+login; the page then carries the session instead of an API key.
+
+- Mint a session for a tenant/subtenant, with a lifetime you choose (1 h by default, 12 h max)
+- A session reaches only what an end user does — chatting, its own conversations, attachments, its own limits, its own connected apps
+- The identity in the token is imposed on path, query and body, so another tenant cannot be reached by editing a request
+- An API key can be put in `signed` mode, where minting sessions is the **only** thing it can do
+
+**Base path:** `/api/v1/tenant-sessions`
+
+For detailed documentation, see [tenant-sessions.md](tenant-sessions.md).
+
+### 10. Built-in Tools Reference
 
 List of all built-in tool groups with their UIDs, ready to use in `availableToolsGroupsUids`.
 
@@ -290,7 +315,8 @@ API rate limits are applied per API key. Contact support for rate limit details 
 | 200 | Success |
 | 201 | Created |
 | 400 | Bad Request - Invalid input data |
-| 401 | Unauthorized - Invalid or missing API key |
+| 401 | Unauthorized - Invalid or missing API key; also a route a tenant session may not call, or a `signed` key used without a session (see [tenant-sessions.md](tenant-sessions.md)) |
+| 403 | Forbidden - The credential proved one identity and the request asked for another (tenant sessions) |
 | 404 | Not Found - Resource does not exist |
 | 429 | Too Many Requests - Rate limit, or tenant usage limit (`TENANT_LIMIT_EXCEEDED`, see [tenants.md](tenants.md)) |
 | 500 | Internal Server Error |

@@ -148,7 +148,8 @@ GET /api/v1/assistants/:identifier
     "isCustom": true,
     "creationTimestampMs": 1751020800000,
     "availableToolsGroupsUids": ["6712f0c1a4b2c3d4e5f60718"],
-    "enabledTools": ["search_customers", "create_deal"]
+    "enabledTools": ["search_customers", "create_deal"],
+    "tenantIntegrations": { "enabled": true, "count": 4 }
   }
 }
 ```
@@ -157,6 +158,30 @@ GET /api/v1/assistants/:identifier
 assistants. An `enabledTools` of `null` means every tool of the assigned tool
 groups is enabled. Read them before a partial update if you intend to preserve
 the current tool selection — see [Update Assistant](#update-assistant).
+
+### Does this assistant offer connected apps?
+
+`tenantIntegrations` answers, on this endpoint only (not on the listing),
+whether the assistant lets its **tenants** connect their own third-party
+accounts:
+
+| Field | Meaning |
+|---|---|
+| `enabled` | Whether connected apps are on for this assistant, after resolving its environment |
+| `count` | How many apps the catalogue offers. An upper bound — the listing drops any the provider cannot resolve — and enough to size a placeholder |
+
+It is here so a UI does not have to ask. Without it, a page that shows a
+connect-your-apps control had to call `GET /api/v1/tenant-integrations` on every
+load just to discover there was nothing to show; assistants that offer nothing
+now say so on a request the page was already making.
+
+Built-in specializations state `{ "enabled": false, "count": 0 }` explicitly —
+they have no catalogue to inherit, and saying so is what spares the caller the
+request.
+
+**An absent field means "cannot tell", not "no".** A deployment older than this
+feature says nothing at all; read silence as unknown and fall back to asking, or
+you will hide the control from anyone whose deployment has not caught up.
 
 ### Error Responses
 
