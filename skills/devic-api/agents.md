@@ -492,11 +492,35 @@ POST /api/v1/agents/:agentId/threads
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `message` | string | Yes | Initial message/task for the agent |
+| `message` | string \| object | No | Initial message/task for the agent. When omitted, the rest of the payload (any property not listed in this table) is forwarded to the agent as the user message — see [Webhook-style Payloads](#webhook-style-payloads). |
+| `state` | string | No | Initial thread state: `queued` (default, runs on the next processing cycle) or `paused` (stays paused until resumed). |
 | `tags` | string[] | No | Tags to associate with the thread |
 | `metadata` | object | No | Custom metadata for the thread. `metadata.promptTemplateParams` fills `{{placeholder}}` variables in the agent's system prompt — see [Prompt Template Parameters](#prompt-template-parameters). |
 | `tenantId` | string | No | Tenant the thread belongs to (multi-tenant environments). Auto-registers the tenant on first use and attributes cost/usage to it. See [tenants.md](tenants.md). |
 | `subtenantId` | string | No | End user/entity inside the tenant. When omitted it is derived from `metadata.subtenantMetadata.id` or the legacy `metadata.userId`. Used for per-subtenant cost attribution and usage limits. |
+| `enabledTools` | string[] | No | Tools available to the agent from the configured tool groups. If defined but empty, no tools are used. |
+| `provider` | string | No | LLM provider override for this thread. If not specified, uses the agent default. |
+| `model` | string | No | Model override for this thread. Must be valid for the provider. If not specified, uses the agent default. |
+
+The known fields above are type-validated (`400 VALIDATION_ERROR` on mismatch); unknown extra properties are always accepted.
+
+### Webhook-style Payloads
+
+`message` is optional. When it is not provided, the whole request payload — minus the control fields listed in the table above — is forwarded to the agent as the user message. This makes the endpoint directly usable as a webhook target: point an external system at it and the agent receives the raw event payload.
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/agents/agent-123/threads" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event": "order.created",
+    "orderId": 42,
+    "customer": { "name": "Acme Corp" },
+    "tenantId": "acme-corp"
+  }'
+```
+
+The agent receives `{"event":"order.created","orderId":42,"customer":{"name":"Acme Corp"}}` as its user message, while `tenantId` keeps its control semantics (cost attribution) and is not part of the message. Control fields — including `metadata` and any credentials it may carry — are never forwarded to the prompt. An empty payload creates a thread whose user message is `{}` (useful for agents whose system prompt already contains the full task, e.g. via `metadata.promptTemplateParams`).
 
 ### Prompt Template Parameters
 
