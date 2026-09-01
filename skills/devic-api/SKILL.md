@@ -139,17 +139,19 @@ Understanding how the core entities relate to each other is essential for buildi
 
 **Tool Servers**: External API integrations that define tools. A tool server:
 1. Is created via the Tool Servers API
-2. Gets assigned to a **Tools Group**
-3. The group's UID is added to an assistant/agent's `availableToolsGroupsUids`
-4. The tools become available for that assistant/agent to use
+2. Its `_id` is added to an assistant/agent's `availableToolsGroupsUids`
+3. The tools become available for that assistant/agent to use
+
+That array also holds the UIDs of Devic's built-in tool groups, so custom and
+built-in tools are mixed in the same list.
 
 ### Workflow Example
 
 To give an agent access to a custom CRM API:
 
 1. **Create Tool Server** with your CRM endpoint definitions
-2. **Create/Configure a Tools Group** that references the tool server (done via Devic dashboard)
-3. **Update the Agent's assistantSpecialization** to include the tools group UID in `availableToolsGroupsUids`
+2. **Copy its `_id`** from the response
+3. **Update the Agent's assistantSpecialization** to include that `_id` in `availableToolsGroupsUids`
 4. The agent can now call CRM tools during execution
 
 ## API Sections

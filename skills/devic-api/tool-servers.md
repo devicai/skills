@@ -40,27 +40,36 @@ The Tool Servers API allows you to manage external tool integrations that agents
 Tool Servers provide external API capabilities to assistants and agents through a layered architecture:
 
 ```
-Tool Server (API Definition)
-       │
-       │ assigned to
-       ▼
-  Tools Group (Logical Grouping)
-       │
-       │ referenced by availableToolsGroupsUids
-       ▼
-Assistant Specialization
-       │
+Tool Server (API Definition)          Built-in tool group
+       │                                     │
+       │ referenced by its _id               │ referenced by its UID
+       └──────────────┬──────────────────────┘
+                      ▼
+        availableToolsGroupsUids: []
+                      │
+                      ▼
+          Assistant Specialization
+                      │
        ├──► Assistant (processes messages with tools)
        │
        └──► Agent (executes threads with tools)
 ```
 
+`availableToolsGroupsUids` is a single flat array of strings holding **both**
+kinds of identifier: the `_id` of your custom tool servers, and the UID of
+built-in tool groups (see [built-in-tools.md](built-in-tools.md)).
+
 ### Integration Steps
 
 1. **Create Tool Server**: Define your external API tools via the Tool Servers API
-2. **Assign to Tools Group**: Link the tool server to a Tools Group (via Devic dashboard)
-3. **Configure Assistant/Agent**: Add the Tools Group UID to `availableToolsGroupsUids`
+2. **Take its `_id`** from the create response, or from `GET /api/v1/tool-servers`
+3. **Configure Assistant/Agent**: Add that `_id` to `availableToolsGroupsUids` —
+   at the root of an assistant, inside `assistantSpecialization` for an agent
 4. **Tools Available**: The assistant/agent can now invoke tools during execution
+
+Optionally narrow the selection with `enabledTools`, an allowlist of tool
+**function names** that applies across every entry of `availableToolsGroupsUids`.
+A tool server with `enabled: false` contributes no tools regardless of the array.
 
 ### Tool Server Properties
 
@@ -712,34 +721,92 @@ Example templates:
 
 ## Authentication Configuration
 
-Tool servers support various authentication methods:
+The method is selected with `authenticationMethod`, and its settings go in a
+sibling object named after it. Four methods are supported:
+
+| `authenticationMethod` | Settings object | Sends |
+|------------------------|-----------------|-------|
+| `jwt` | `jwt` | `Authorization: Bearer <token>` |
+| `basic` | `basic` | `Authorization: Basic base64(username:password)` |
+| `oauth2` | `oauth2` | `Authorization: Bearer <access token>`, refreshed automatically |
+| `customHeader` | `customHeader` | One or more arbitrary headers |
+
+### Bearer token / API key in the Authorization header
 
 ```json
 {
   "authenticationConfig": {
-    "type": "bearer",
-    "token": "your-api-token"
+    "authenticationMethod": "jwt",
+    "jwt": { "token": "your-api-token" }
   }
 }
 ```
 
-```json
-{
-  "authenticationConfig": {
-    "type": "apiKey",
-    "headerName": "X-API-Key",
-    "apiKey": "your-api-key"
-  }
-}
-```
+### API key in a custom header
+
+Use `customHeader` for `X-API-Key`, `Api-Token`, and any other header-based
+scheme. It accepts an array, so you can send several headers at once:
 
 ```json
 {
   "authenticationConfig": {
-    "type": "oauth2",
-    "clientId": "client-id",
-    "clientSecret": "client-secret",
-    "tokenUrl": "https://auth.example.com/token"
+    "authenticationMethod": "customHeader",
+    "customHeader": [
+      { "headerName": "X-API-Key", "value": "your-api-key" }
+    ]
   }
 }
 ```
+
+### HTTP Basic
+
+```json
+{
+  "authenticationConfig": {
+    "authenticationMethod": "basic",
+    "basic": { "username": "your-user", "password": "your-password" }
+  }
+}
+```
+
+### OAuth 2.0
+
+```json
+{
+  "authenticationConfig": {
+    "authenticationMethod": "oauth2",
+    "oauth2": {
+      "clientId": "client-id",
+      "clientSecret": "client-secret",
+      "refreshTokenEndpoint": "https://auth.example.com/oauth/token",
+      "grant_type": "client_credentials",
+      "scope": "read write",
+      "requestFormat": "form"
+    }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `clientId`, `clientSecret` | Client credentials |
+| `refreshTokenEndpoint` | The provider's **token endpoint**, used for both grant types |
+| `grant_type` | `client_credentials` or `refresh_token` |
+| `refreshToken` | Required when `grant_type` is `refresh_token` |
+| `scope` | Space-separated string (not an array) |
+| `requestFormat` | `form` (`application/x-www-form-urlencoded`) or `json` |
+
+The access token is cached until shortly before it expires and refreshed
+transparently.
+
+> **Always set `authenticationConfig` on a tool server that points at a
+> third-party API.** When it is absent, the outgoing request carries the calling
+> Devic credential's own `Authorization` header, which sends it to the external
+> host. If the API truly needs no authentication, set a neutral
+> `customHeader` instead of leaving the config empty.
+
+### API keys in the query string
+
+Query-string keys are not part of `authenticationConfig`. Include the parameter
+in the tool's `endpoint` (for example `/v1/things?api_key=...`). Most providers
+also accept the key as a header — prefer that.

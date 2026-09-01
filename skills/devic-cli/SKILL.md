@@ -378,8 +378,11 @@ devic agents threads resume <threadId>
 Manually set a thread's final state.
 
 ```bash
-devic agents threads complete <threadId> --state <COMPLETED|FAILED|CANCELLED|TERMINATED>
+devic agents threads complete <threadId> --state <completed|failed|terminated>
 ```
+
+The value is sent to the API verbatim, and thread states are **lowercase**. The
+command's help text still shows uppercase names — use the lowercase ones above.
 
 #### devic agents threads evaluate
 
@@ -913,7 +916,7 @@ devic agents threads list <agentId> --omit-content -o json | \
 
 ```bash
 # Get all completed threads and their evaluations
-devic agents threads list <agentId> --state COMPLETED -o json | \
+devic agents threads list <agentId> --state completed -o json | \
   jq -r '.[].threadId' | \
   while read tid; do devic agents threads evaluate "$tid"; done
 ```
