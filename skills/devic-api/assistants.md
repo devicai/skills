@@ -33,7 +33,7 @@ Assistant Specializations define how an assistant behaves, what tools it can use
 | `identifier` | string | Unique identifier used in API paths |
 | `name` | string | Display name |
 | `description` | string | Description of the assistant's purpose |
-| `presets` | string | System prompt / instructions |
+| `presets` | string | System prompt / instructions. Writable on create and update; **readable only with `?includePresets=true`** — see [Reading the System Prompt](#reading-the-system-prompt) |
 | `availableToolsGroupsUids` | string[] | Tool group IDs the assistant can use |
 | `enabledTools` | string[] \| null | Explicit subset of enabled tool names. `null` enables every tool of the assigned groups, `[]` enables none |
 | `model` | string | Default LLM model |
@@ -133,6 +133,12 @@ GET /api/v1/assistants/:identifier
 |-----------|------|-------------|
 | `identifier` | string | The unique identifier of the assistant |
 
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `includePresets` | boolean | `false` | Return the assistant's system prompt in `presets`. See [Reading the System Prompt](#reading-the-system-prompt) |
+
 ### Response
 
 ```json
@@ -183,10 +189,67 @@ request.
 feature says nothing at all; read silence as unknown and fall back to asking, or
 you will hide the control from anyone whose deployment has not caught up.
 
+### Reading the System Prompt
+
+`presets` is **absent unless you ask for it**, because this is the same endpoint
+an embedded widget calls to render itself — and a widget runs on someone else's
+page. Ask with `?includePresets=true`:
+
+```bash
+curl "https://api.devic.ai/api/v1/assistants/$ID?includePresets=true" \
+  -H "x-api-key: $DEVIC_API_KEY"
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "identifier": "a1289b11-fe5a-4c50-8e90-138850651932",
+    "name": "Sales Assistant",
+    "presets": "You are a sales expert. Always be concise..."
+  }
+}
+```
+
+Asking is not by itself enough. The request is refused with **403** when:
+
+| Refused | Why |
+|---------|-----|
+| The credential is a **tenant session** | That is the token a browser holds. The prompt is yours, not your end user's — read it from your own backend with an API key |
+| The assistant is **built-in** (`isCustom: false`) | Its prompt belongs to the platform, and there is nothing to edit it back with |
+| The caller cannot reach the assistant | The same project and per-entity access that governs this endpoint anyway |
+
+It is a 403 rather than a 200 without the field, so you can always tell "not
+allowed" from "the prompt is empty".
+
+#### Editing a prompt instead of replacing it
+
+`PATCH` overwrites `presets` wholesale, so any edit is a read-modify-write. This
+is what the opt-in exists for — before it, the prompt could be written and never
+read, so an edit meant retyping the whole thing:
+
+```bash
+# 1. read the current prompt
+CURRENT=$(curl -s "https://api.devic.ai/api/v1/assistants/$ID?includePresets=true" \
+  -H "x-api-key: $DEVIC_API_KEY" | jq -r '.data.presets')
+
+# 2. make the change
+UPDATED=${CURRENT//"old sentence"/"new sentence"}
+
+# 3. write it back, JSON-encoding the whole prompt
+curl -X PATCH "https://api.devic.ai/api/v1/assistants/$ID" \
+  -H "x-api-key: $DEVIC_API_KEY" -H "Content-Type: application/json" \
+  -d "$(jq -n --arg p "$UPDATED" '{presets: $p}')"
+```
+
+Send step 3 without step 1 and you replace the entire prompt with whatever you
+sent.
+
 ### Error Responses
 
 | Status | Description |
 |--------|-------------|
+| 403 | `includePresets` asked for by a tenant session, or on a built-in assistant |
 | 404 | Assistant specialization not found |
 
 ---
