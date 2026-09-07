@@ -831,13 +831,28 @@ devic environments create --name <name> [--description <desc>] [--project <proje
                           [--runtime node24|node22|python3.13] [--memory <mib>]
                           [--init-script <script> | --init-script-file <file>]
                           [--env KEY=VALUE ...]
-                          [--snapshots] [--fixed-snapshot] [--per-tenant-snapshots]
-                          [--auto-extend] [--persist]
+                          [--snapshots] [--evolving-snapshot | --fixed-snapshot]
+                          [--per-tenant-snapshots] [--auto-extend] [--persist]
                           [--public-slug <slug>] [--start-command <cmd>]
                           [--from-json <file>]
-devic environments update <environment> [same flags] [--unset-env KEY ...]
+devic environments update <environment> [same flags, each with a --no- form]
+                                        [--unset-env KEY ...]
 devic environments delete <environment>
 ```
+
+#### Snapshot modes
+
+`--snapshots` turns saving on. Whether a session may *replace* what is saved is
+a separate question, and the answer is **no unless you ask**:
+
+| Mode | Flag | What sessions may do |
+| --- | --- | --- |
+| **Fixed** (default) | `--fixed-snapshot`, or just `--snapshots` | Start from the saved state; cannot write back |
+| **Evolving** | `--evolving-snapshot` | Every session's changes replace the snapshot |
+
+Fixed is the useful default: it is what stops a stray agent run from destroying
+a machine you spent time provisioning. Switch either way later with
+`devic environments update <env> --evolving-snapshot | --fixed-snapshot`.
 
 #### Variables
 
@@ -891,7 +906,7 @@ devic sandbox start <environment> [--timeout <minutes>] [--tenant <tenantId>]
                                   [--force] [--force-unsaved-snapshot]
 devic sandbox status <environment>
 devic sandbox exec <environment> <command> [--sandbox <id>] [--cwd <path>] [--sudo]
-devic sandbox stop <environment> [--sandbox <id>] [--no-save] [--force]
+devic sandbox stop <environment> [--sandbox <id>] [--save | --no-save] [--force]
 
 devic sandbox ls <environment> [path] [--sandbox <id>]
 devic sandbox cat <environment> <path> [--sandbox <id>]
@@ -914,6 +929,43 @@ command ran, it just failed.
 `--timeout` is 1–30 minutes (default 10). With `autoExtend` on the environment a
 busy sandbox renews itself; an idle one still expires. A second concurrent
 `start` returns `SESSION_ACTIVE` unless you pass `--force`.
+
+#### Does stopping save?
+
+It depends on the environment, and it matches what the dashboard terminal does:
+
+| Environment | `stop` with nothing said |
+| --- | --- |
+| Evolving snapshot | Saves (`--no-save` discards) |
+| Fixed snapshot | **Does not save** — pass `--save` to bake |
+| Snapshots off | Nothing to save either way |
+
+Saying nothing never overwrites a snapshot someone froze on purpose. `--save` is
+how you provision one, and it is deliberately something you have to type.
+
+The save is asynchronous: `stop` returns straight away with `saving: true` and
+the snapshot id, and the environment picks that id up once the capture finishes.
+Starting again before then answers `409 SNAPSHOT_SAVE_IN_PROGRESS`.
+
+#### Provisioning a machine: bake once, then leave it alone
+
+```bash
+devic environments create --name "Build box" --runtime node24 --snapshots
+
+devic sandbox start "Build box" --timeout 20        # fresh machine, runs the init script
+devic sandbox exec  "Build box" 'cd /workspace && npm install'
+devic sandbox write "Build box" /workspace/report.py --file ./report.py
+devic sandbox stop  "Build box" --save              # bake it
+
+# every later session, yours or an agent's, starts with all of it in place
+devic sandbox start "Build box"
+devic sandbox exec  "Build box" 'cd /workspace && node -e "require(\"left-pad\")"'
+```
+
+`devic environments snapshot init` does the same baking unattended, from the
+init script and the configured CLIs. Use the manual session while you are still
+working out what the provisioning should say; use `snapshot init` once it is
+written down.
 
 ---
 

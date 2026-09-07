@@ -102,7 +102,7 @@ an end user to their own data is no answer to that. Use an API key. See
 | `initScript` | string | Shell script run when a **new** sandbox is created. Skipped on a restore |
 | `envVars` | object | Sandbox-level variables, layered under the environment ones |
 | `snapshotEnabled` | boolean | Save the filesystem between sessions |
-| `replaceSnapshotOnStop` | boolean | `true` (default) evolving; `false` fixed — sessions always start from the same state |
+| `replaceSnapshotOnStop` | boolean | **Opt-in.** `true` lets a session's changes replace the snapshot. Unset (not just `false`) means fixed: sessions start from the saved state and cannot write back |
 | `perTenantSnapshots` | boolean | Give every tenant its own snapshot, derived from the base |
 | `persistAfterSessionClose` | boolean | Keep the machine alive after the conversation ends |
 | `autoExtend` | boolean | An operation arriving near the deadline buys another full timeout. Idle sandboxes still expire |
@@ -281,6 +281,55 @@ curl -X POST https://api.devic.ai/api/v1/environments/{environmentId}/snapshot/i
 
 Re-baking discards the state the snapshot had accumulated. That is the point:
 it is how a machine is brought back in line with a changed init script.
+
+### Fixed by default, and who may write
+
+`replaceSnapshotOnStop` is checked for `true`. **Unset means fixed** — agent
+runs boot from the snapshot and cannot write back to it. This is usually what
+you want: it is what stops a stray run from destroying a machine you spent time
+provisioning.
+
+Manual sandbox sessions are the exception, and deliberately: `POST /sandbox/stop`
+with `saveChanges: true` writes the snapshot whatever the mode says. That is the
+only way to provision a fixed environment, and it is why the CLI makes it
+explicit (`devic sandbox stop --save`) rather than doing it silently.
+
+### Provisioning a machine: bake once, then leave it alone
+
+The workflow the fixed default exists for — install dependencies by hand, save
+them, and let every later run start from there without being able to break it:
+
+```bash
+# 1. An environment with snapshots, fixed (the default).
+devic environments create --name "Build box" --runtime node24 --snapshots
+
+# 2. A machine to work on. No snapshot yet, so this one is fresh and runs the
+#    init script.
+devic sandbox start "Build box" --timeout 20
+
+# 3. Provision it: dependencies, libraries, files, whatever the agent will need.
+devic sandbox exec "Build box" 'cd /workspace && npm install'
+devic sandbox write "Build box" /workspace/report.py --file ./report.py
+
+# 4. Bake it. `--save` is required because the environment is fixed.
+devic sandbox stop "Build box" --save
+
+# 5. From here every session — yours or an agent's — starts with all of it
+#    already in place, and none of them can overwrite it.
+```
+
+The save runs in the background: `stop` returns `saving: true` and the snapshot
+id, and the environment's `sandboxConfig.snapshotId` picks up that id once the
+capture finishes. Starting a session again before it does answers `409
+SNAPSHOT_SAVE_IN_PROGRESS`.
+
+To let sessions evolve the snapshot instead, `devic environments update
+"Build box" --evolving-snapshot`, and `--fixed-snapshot` to freeze it again.
+
+`POST /snapshot/initialize` does the same baking unattended, from the init
+script and the configured CLIs, with nobody at a terminal. Use it when the
+provisioning is already written down; use the manual session when you are
+still working out what it should say.
 
 ### Per tenant
 
