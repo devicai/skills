@@ -102,6 +102,89 @@ If a user terminates a subthread (via the Complete endpoint with state `TERMINAT
 
 ---
 
+## Scheduled Execution
+
+**An agent can run itself on a schedule. You do not need an external cron.**
+
+This is worth stating plainly because the field is easy to miss and the
+consequence of missing it is a wrong architecture: a scheduler bolted on
+outside Devic to poke `POST /agents/{agentId}/threads` every morning, when the
+agent could have woken itself up.
+
+Set `periodicExecution` on create or update. A cron in the platform checks every
+minute and starts a thread when a schedule is due.
+
+```json
+{
+  "periodicExecution": {
+    "enabled": true,
+    "cronExpression": "0 7 * * 1-5"
+  }
+}
+```
+
+### The three ways to say when
+
+Exactly one of the three. Sending two is a 400.
+
+| Field | Shape | Use it for |
+|-------|-------|-----------|
+| `cronExpression` | 5-field cron string | Anything cron expresses: `"0 7 * * 1-5"` is 07:00 on weekdays |
+| `specificHour` | `{ hour, minute, timezone }` | A time of day, optionally narrowed by `executionDays` |
+| `intervalSchedule` | `{ days, hour, minute, timezone, startDate }` | Every N days from an anchor date |
+
+`intervalSchedule` is not redundant with cron: cron's day-of-month restarts
+every month, so it cannot encode a true 14-day cadence. `startDate` is
+`YYYY-MM-DD`, read in `timezone`.
+
+`executionDays` narrows `specificHour` to certain weekdays:
+
+```json
+{
+  "periodicExecution": {
+    "enabled": true,
+    "specificHour": { "hour": 9, "minute": 0, "timezone": "Europe/Madrid" },
+    "executionDays": { "monday": true, "friday": true }
+  }
+}
+```
+
+`timezone` is an IANA name (`Europe/Madrid`, `America/New_York`). It defaults to
+UTC, which is rarely what a business report wants.
+
+### Reading it back
+
+`GET /api/v1/agents/{agentId}` returns `periodicExecution` including
+`lastExecutionTimestampMs`, which is how you check a schedule actually fired.
+
+### Turning it off
+
+```json
+{ "periodicExecution": { "enabled": false } }
+```
+
+A disabled or archived agent does not fire either, whatever its schedule says.
+
+### Validation
+
+Inconsistent schedules are refused before anything is written, with a message
+naming the field:
+
+```
+400 periodicExecution.cronExpression 'daily' is not a valid 5-field cron expression
+```
+
+### From the CLI
+
+```bash
+devic agents create --name "Daily report" --cron "0 7 * * 1-5" --timezone Europe/Madrid
+devic agents update <agentId> --schedule-at 09:00 --days monday,friday --timezone Europe/Madrid
+devic agents update <agentId> --every-days 14 --at 08:30 --start-date 2026-01-06
+devic agents update <agentId> --no-schedule
+```
+
+---
+
 ## Agent Structure
 
 Agents are configured through an embedded `assistantSpecialization` object that determines their behavior and capabilities.
@@ -121,6 +204,8 @@ Agents are configured through an embedded `assistantSpecialization` object that 
 | `maxExecutionToolCalls` | number | Max tool calls per execution |
 | `evaluationConfig` | object | Evaluation settings |
 | `subAgentConfig` | object | Configuration for when this agent acts as a subagent (see below) |
+| `periodicExecution` | object | Schedule on which the agent runs itself (see [Scheduled Execution](#scheduled-execution)) |
+| `environmentId` | string | Environment the agent is connected to: its sandbox, secrets, knowledge and tools (see [environments.md](environments.md)) |
 
 ### assistantSpecialization Object
 
@@ -333,6 +418,8 @@ POST /api/v1/agents
 | `agentNotificationConfig` | object | No | Notification settings |
 | `evaluationConfig` | object | No | Evaluation settings |
 | `subAgentConfig` | object | No | Configuration for subagent behavior (see subAgentConfig Object) |
+| `periodicExecution` | object | No | Run the agent on a schedule (see [Scheduled Execution](#scheduled-execution)) |
+| `environmentId` | string | No | Environment to connect the agent to; `null` disconnects (see [environments.md](environments.md)) |
 
 ### assistantSpecialization Object
 

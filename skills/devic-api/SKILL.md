@@ -178,6 +178,8 @@ Manage autonomous agents that can execute multi-step tasks with tool access.
 - Pause, resume, and complete agent executions
 - Evaluate agent performance
 - Track agent costs
+- **Run an agent on a schedule** (`periodicExecution`: cron, a time of day, or every N days) — no external scheduler needed
+- Connect an agent to an Environment (`environmentId`)
 
 **Base path:** `/api/v1/agents`
 
@@ -282,6 +284,22 @@ For detailed documentation, see [tenant-sessions.md](tenant-sessions.md).
 List of all built-in tool groups with their UIDs, ready to use in `availableToolsGroupsUids`.
 
 For detailed documentation, see [built-in-tools.md](built-in-tools.md).
+
+### 11. Environments & Sandboxes API
+
+The machine an agent works on and everything it may reach.
+
+- Create environments: sandbox runtime, init script, knowledge, tools
+- Store credentials as environment variables, encrypted at rest and injected
+  into the machine — not passed through a message, where they would be stored
+  and readable back indefinitely
+- Bake snapshots, including one per tenant
+- Connect agents and assistants to an environment
+- Start a real Linux machine, run shell on it, read and write its files
+
+**Base path:** `/api/v1/environments`
+
+For detailed documentation, see [environments.md](environments.md).
 
 ## Pagination
 

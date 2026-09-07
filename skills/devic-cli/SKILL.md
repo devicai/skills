@@ -1,6 +1,6 @@
 ---
 name: devic-cli
-description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, building agent workflows that interact with assistants, agents, tool servers, documents and feedback, or creating, browsing and installing Devic skills (including into local coding agents: claude-code, codex, cursor, opencode, cline)."
+description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, building agent workflows that interact with assistants, agents, tool servers, documents and feedback, scheduling agents to run themselves (cron, time of day, every N days), managing environments and provisioning or testing sandboxes and snapshots, or creating, browsing and installing Devic skills (including into local coding agents: claude-code, codex, cursor, opencode, cline)."
 ---
 
 # @devicai/cli
@@ -267,15 +267,54 @@ devic agents get <agentId>
 
 ```bash
 devic agents create [--name <name>] [--description <desc>] [--from-json <file>]
+                    [--cron <expr> | --schedule-at <HH:MM> | --every-days <n>]
+                    [--days <list>] [--at <HH:MM>] [--start-date <YYYY-MM-DD>]
+                    [--timezone <tz>] [--no-schedule]
+                    [--environment <environment>]
 ```
 
-The `--from-json` payload supports all agent fields: `name`, `description`, `assistantSpecialization` (with `presets`, `availableToolsGroupsUids`, `enabledTools`, `model`, `provider`, `subagentsIds`, `contextManagement`), `provider`, `llm`, `maxExecutionInputTokens`, `maxExecutionToolCalls`, `evaluationConfig`, `subAgentConfig`.
+The `--from-json` payload supports all agent fields: `name`, `description`, `assistantSpecialization` (with `presets`, `availableToolsGroupsUids`, `enabledTools`, `model`, `provider`, `subagentsIds`, `contextManagement`), `provider`, `llm`, `maxExecutionInputTokens`, `maxExecutionToolCalls`, `evaluationConfig`, `subAgentConfig`, `periodicExecution`, `sandboxPreprovision`, `environmentId`.
 
 #### devic agents update
 
 ```bash
 devic agents update <agentId> [--name <name>] [--description <desc>] [--from-json <file>]
+                              [scheduling flags] [--environment <environment>]
 ```
+
+#### Scheduling: the agent runs itself
+
+**Devic has a scheduler.** An agent can wake itself up; you do not need an
+external cron poking `threads create` every morning. Three ways to say when,
+mutually exclusive:
+
+```bash
+# A 5-field cron expression
+devic agents create --name "Daily report" --cron "0 7 * * 1-5" --timezone Europe/Madrid
+
+# A time of day, optionally narrowed to weekdays
+devic agents update <agentId> --schedule-at 09:00 --days monday,friday --timezone Europe/Madrid
+
+# Every N days from an anchor date. Cron cannot express this: its day-of-month
+# restarts every month, so "every 14 days" is not a cron expression.
+devic agents update <agentId> --every-days 14 --at 08:30 --start-date 2026-01-06
+
+# Off
+devic agents update <agentId> --no-schedule
+```
+
+`--timezone` takes an IANA name and defaults to UTC, which is rarely what a
+business report wants. Bad input is refused before the request: an invalid time
+of day, an unknown weekday, or two scheduling modes at once.
+
+#### Environment: the machine, secrets and tools
+
+```bash
+devic agents create --name "Reporter" --environment "Reporting box"
+devic agents update <agentId> --environment null   # disconnect
+```
+
+Accepts an environment `_id` or its name. See **devic environments** below.
 
 #### devic agents delete
 
@@ -775,6 +814,109 @@ The lockfile lives at `.devic/skills.json` (project) or `~/.devic/skills.json`
 
 ---
 
+### devic environments
+
+An environment is the machine an agent works on plus everything it may reach:
+the sandbox, its snapshot, the knowledge and tools it inherits, and its
+encrypted variables. Aliased as `devic envs`.
+
+**Every command accepts the environment by `_id` or by name.**
+
+#### CRUD
+
+```bash
+devic environments list [--project <project>] [--offset <n>] [--limit <n>]
+devic environments get <environment>
+devic environments create --name <name> [--description <desc>] [--project <project>]
+                          [--runtime node24|node22|python3.13] [--memory <mib>]
+                          [--init-script <script> | --init-script-file <file>]
+                          [--env KEY=VALUE ...]
+                          [--snapshots] [--fixed-snapshot] [--per-tenant-snapshots]
+                          [--auto-extend] [--persist]
+                          [--public-slug <slug>] [--start-command <cmd>]
+                          [--from-json <file>]
+devic environments update <environment> [same flags] [--unset-env KEY ...]
+devic environments delete <environment>
+```
+
+#### Variables
+
+Values are encrypted at rest and **always read back masked**. `--env` merges
+over what is stored rather than replacing the map, so the secrets you do not
+name survive untouched:
+
+```bash
+devic environments update "Reporting box" --env "REGION=eu-west-1"
+devic environments update "Reporting box" --unset-env REGION
+```
+
+This is where a database password or an SSH key belongs — not in a thread
+message, which is stored and readable back over the API indefinitely.
+
+#### Connections
+
+```bash
+devic environments connections <environment>
+devic environments connect <environment> agent|assistant <entityId> [--env KEY=VALUE ...]
+devic environments disconnect <environment> agent|assistant <entityId>
+```
+
+#### Snapshots
+
+```bash
+devic environments snapshot init <environment>                      # bake or re-bake the base
+devic environments snapshot tenants <environment> [--limit <n>] [--skip <n>]
+devic environments snapshot init-tenant <environment> <tenantId>    # discards that tenant's state
+devic environments snapshot delete-tenant <environment> <tenantId>
+```
+
+#### Sessions and tooling
+
+```bash
+devic environments sessions list <environment>
+devic environments sessions get <environment> <sessionId>
+devic environments clis <environment>
+```
+
+---
+
+### devic sandbox
+
+A real Linux machine started on an environment. The lifecycle is explicit
+because none of it is free: starting provisions and bills a machine, and
+stopping is what saves the snapshot.
+
+```bash
+devic sandbox start <environment> [--timeout <minutes>] [--tenant <tenantId>]
+                                  [--force] [--force-unsaved-snapshot]
+devic sandbox status <environment>
+devic sandbox exec <environment> <command> [--sandbox <id>] [--cwd <path>] [--sudo]
+devic sandbox stop <environment> [--sandbox <id>] [--no-save] [--force]
+
+devic sandbox ls <environment> [path] [--sandbox <id>]
+devic sandbox cat <environment> <path> [--sandbox <id>]
+devic sandbox write <environment> <path> (--content <text> | --file <local> | --url <src>)
+```
+
+After `start`, the other commands find the live session on their own — there is
+no sandbox id to carry between calls. `--sandbox` overrides that.
+
+**`exec` takes a line of shell, not argv.** Quote it: pipes, `&&` and `cd`
+belong inside the command.
+
+```bash
+devic sandbox exec "Reporting box" 'cd /workspace && ./report.sh | tail -20'
+```
+
+A non-zero exit code is reported in the output, not raised as a CLI error — the
+command ran, it just failed.
+
+`--timeout` is 1–30 minutes (default 10). With `autoExtend` on the environment a
+busy sandbox renews itself; an idle one still expires. A second concurrent
+`start` returns `SESSION_ACTIVE` unless you pass `--force`.
+
+---
+
 ### devic feedback
 
 Submit and view feedback on chat messages and thread messages.
@@ -908,6 +1050,38 @@ devic agents threads list <agentId> --omit-content -o json | \
     if [ "$COUNT" -gt "0" ]; then echo "Found in thread: $tid"; fi
   done
 ```
+
+### A nightly report against a private database
+
+The shape all of this exists for: no external scheduler, and no credential in a
+message.
+
+```bash
+# 1. An environment holding the credentials and the tooling.
+devic environments create --name "Reporting box" \
+  --runtime python3.13 \
+  --env "DATABASE_URL=postgres://reporter:...@db.internal/analytics" \
+  --env "SSH_PRIVATE_KEY=$(cat ~/.ssh/reporter_ed25519)" \
+  --init-script "pip install psycopg2-binary && mkdir -p /workspace" \
+  --snapshots --auto-extend
+
+# 2. Bake the snapshot once, so no run pays for the install.
+devic environments snapshot init "Reporting box"
+
+# 3. Try it by hand before trusting it to a schedule.
+devic sandbox start "Reporting box" --timeout 10
+devic sandbox write "Reporting box" /workspace/report.py --file ./report.py
+devic sandbox exec "Reporting box" 'cd /workspace && python report.py'
+devic sandbox stop "Reporting box"          # saves into the snapshot
+
+# 4. An agent that wakes itself at 07:00 on weekdays, on that machine.
+devic agents create --name "Nightly analytics report" \
+  --environment "Reporting box" \
+  --cron "0 7 * * 1-5" --timezone Europe/Madrid
+```
+
+Step 3 is the one worth keeping: a sandbox you drive by hand is the same
+machine the agent will get, so a script verified there is verified for real.
 
 ### Pipe JSON between commands
 
