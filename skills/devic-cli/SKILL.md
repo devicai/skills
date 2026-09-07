@@ -816,82 +816,41 @@ The lockfile lives at `.devic/skills.json` (project) or `~/.devic/skills.json`
 
 ### devic environments
 
-An environment is the machine an agent works on plus everything it may reach:
-the sandbox, its snapshot, the knowledge and tools it inherits, and its
-encrypted variables. Aliased as `devic envs`.
-
-**Every command accepts the environment by `_id` or by name.**
-
-#### CRUD
+The reusable package an agent runs on: the sandbox and its snapshot, the
+knowledge and tools connected entities inherit, and the encrypted variables they
+can read. Aliased as `devic envs`. **Every command takes the environment by
+`_id` or by name.**
 
 ```bash
-devic environments list [--project <project>] [--offset <n>] [--limit <n>]
+devic environments list [--project <project>]
 devic environments get <environment>
-devic environments create --name <name> [--description <desc>] [--project <project>]
-                          [--runtime node24|node22|python3.13] [--memory <mib>]
-                          [--init-script <script> | --init-script-file <file>]
-                          [--env KEY=VALUE ...]
+devic environments create --name <name> [--runtime node24|node22|python3.13]
+                          [--init-script-file <file>] [--env KEY=VALUE ...]
                           [--snapshots] [--evolving-snapshot | --fixed-snapshot]
                           [--per-tenant-snapshots] [--auto-extend] [--persist]
-                          [--public-slug <slug>] [--start-command <cmd>]
-                          [--from-json <file>]
-devic environments update <environment> [same flags, each with a --no- form]
-                                        [--unset-env KEY ...]
+devic environments update <environment> [same flags, each with a --no- form] [--unset-env KEY]
 devic environments delete <environment>
-```
 
-#### Snapshot modes
-
-`--snapshots` turns saving on. Whether a session may *replace* what is saved is
-a separate question, and the answer is **no unless you ask**:
-
-| Mode | Flag | What sessions may do |
-| --- | --- | --- |
-| **Fixed** (default) | `--fixed-snapshot`, or just `--snapshots` | Start from the saved state; cannot write back |
-| **Evolving** | `--evolving-snapshot` | Every session's changes replace the snapshot |
-
-Fixed is the useful default: it is what stops a stray agent run from destroying
-a machine you spent time provisioning. Switch either way later with
-`devic environments update <env> --evolving-snapshot | --fixed-snapshot`.
-
-#### Variables
-
-Values are encrypted at rest and **always read back masked**. `--env` merges
-over what is stored rather than replacing the map, so the secrets you do not
-name survive untouched:
-
-```bash
-devic environments update "Reporting box" --env "REGION=eu-west-1"
-devic environments update "Reporting box" --unset-env REGION
-```
-
-This is where a database password or an SSH key belongs — not in a thread
-message, which is stored and readable back over the API indefinitely.
-
-#### Connections
-
-```bash
 devic environments connections <environment>
-devic environments connect <environment> agent|assistant <entityId> [--env KEY=VALUE ...]
+devic environments connect    <environment> agent|assistant <entityId>
 devic environments disconnect <environment> agent|assistant <entityId>
-```
 
-#### Snapshots
-
-```bash
-devic environments snapshot init <environment>                      # bake or re-bake the base
-devic environments snapshot tenants <environment> [--limit <n>] [--skip <n>]
-devic environments snapshot init-tenant <environment> <tenantId>    # discards that tenant's state
-devic environments snapshot delete-tenant <environment> <tenantId>
-```
-
-#### Sessions and tooling
-
-```bash
+devic environments snapshot init <environment>          # bake or re-bake the base
+devic environments snapshot tenants <environment>
 devic environments sessions list <environment>
-devic environments sessions get <environment> <sessionId>
 devic environments clis <environment>
 ```
+
+Two things that are easy to get wrong:
+
+- **`--env` merges over the stored map**, it does not replace it. Values are
+  encrypted at rest and read back masked; the merge is what stops adding one
+  variable from deleting the others. This is where a database password belongs —
+  not in a thread message, which is stored and readable back indefinitely.
+- **`--snapshots` alone gives a *fixed* snapshot.** Sessions start from the saved
+  state and cannot write back. `--evolving-snapshot` is what lets every session
+  replace it. Fixed is the default because it stops a stray agent run from
+  destroying a machine you spent time provisioning.
 
 ---
 
@@ -902,70 +861,35 @@ because none of it is free: starting provisions and bills a machine, and
 stopping is what saves the snapshot.
 
 ```bash
-devic sandbox start <environment> [--timeout <minutes>] [--tenant <tenantId>]
-                                  [--force] [--force-unsaved-snapshot]
+devic sandbox start  <environment> [--timeout <minutes>] [--tenant <id>] [--force]
 devic sandbox status <environment>
-devic sandbox exec <environment> <command> [--sandbox <id>] [--cwd <path>] [--sudo]
-devic sandbox stop <environment> [--sandbox <id>] [--save | --no-save] [--force]
+devic sandbox exec   <environment> <command> [--cwd <path>] [--sudo]
+devic sandbox stop   <environment> [--save | --no-save] [--force]
 
-devic sandbox ls <environment> [path] [--sandbox <id>]
-devic sandbox cat <environment> <path> [--sandbox <id>]
+devic sandbox ls    <environment> [path]
+devic sandbox cat   <environment> <path>
 devic sandbox write <environment> <path> (--content <text> | --file <local> | --url <src>)
 ```
 
-After `start`, the other commands find the live session on their own — there is
-no sandbox id to carry between calls. `--sandbox` overrides that.
+After `start`, the other commands find the live session on their own — no
+sandbox id to carry between calls.
 
-**`exec` takes a line of shell, not argv.** Quote it: pipes, `&&` and `cd`
-belong inside the command.
+**`exec` takes a line of shell, not argv.** Quote it: pipes, `&&` and `cd` belong
+inside the command.
 
 ```bash
 devic sandbox exec "Reporting box" 'cd /workspace && ./report.sh | tail -20'
 ```
 
-A non-zero exit code is reported in the output, not raised as a CLI error — the
-command ran, it just failed.
+**Whether `stop` saves depends on the environment**, matching the dashboard
+terminal: an evolving snapshot saves by default, a fixed one does not unless you
+pass `--save`. Saying nothing never overwrites a snapshot someone froze on
+purpose — and `--save` on a fixed environment is how you provision one.
 
-`--timeout` is 1–30 minutes (default 10). With `autoExtend` on the environment a
-busy sandbox renews itself; an idle one still expires. A second concurrent
-`start` returns `SESSION_ACTIVE` unless you pass `--force`.
-
-#### Does stopping save?
-
-It depends on the environment, and it matches what the dashboard terminal does:
-
-| Environment | `stop` with nothing said |
-| --- | --- |
-| Evolving snapshot | Saves (`--no-save` discards) |
-| Fixed snapshot | **Does not save** — pass `--save` to bake |
-| Snapshots off | Nothing to save either way |
-
-Saying nothing never overwrites a snapshot someone froze on purpose. `--save` is
-how you provision one, and it is deliberately something you have to type.
-
-The save is asynchronous: `stop` returns straight away with `saving: true` and
-the snapshot id, and the environment picks that id up once the capture finishes.
-Starting again before then answers `409 SNAPSHOT_SAVE_IN_PROGRESS`.
-
-#### Provisioning a machine: bake once, then leave it alone
-
-```bash
-devic environments create --name "Build box" --runtime node24 --snapshots
-
-devic sandbox start "Build box" --timeout 20        # fresh machine, runs the init script
-devic sandbox exec  "Build box" 'cd /workspace && npm install'
-devic sandbox write "Build box" /workspace/report.py --file ./report.py
-devic sandbox stop  "Build box" --save              # bake it
-
-# every later session, yours or an agent's, starts with all of it in place
-devic sandbox start "Build box"
-devic sandbox exec  "Build box" 'cd /workspace && node -e "require(\"left-pad\")"'
-```
-
-`devic environments snapshot init` does the same baking unattended, from the
-init script and the configured CLIs. Use the manual session while you are still
-working out what the provisioning should say; use `snapshot init` once it is
-written down.
+For the provisioning workflow (install once, bake, then leave it alone), the
+snapshot modes, per-tenant snapshots, the `SESSION_ACTIVE` and
+`SNAPSHOT_SAVE_IN_PROGRESS` conflicts and cleanup, see
+[environments-and-sandboxes.md](environments-and-sandboxes.md).
 
 ---
 
