@@ -1,6 +1,6 @@
 ---
 name: devic-ui
-description: Devic UI is a react component library to integrate AI UI components like chats and agents executions handler directly in your code base connected to devicai API. Covers tenant sessions (signed credentials instead of an API key in the bundle) and connected apps.
+description: Devic UI is a react component library to integrate AI UI components like chats and agents executions handler directly in your code base connected to devicai API. Covers tenant sessions (signed credentials instead of an API key in the bundle), connected apps, translating every text the library renders, and turns stopped by a guardrail.
 ---
 
 # Devic UI Integration Guide
@@ -1108,6 +1108,182 @@ Quick color customization:
   }}
 />
 ```
+
+## Translations
+
+Every text the library renders itself — the drawer header, the composer, the
+buttons, tooltips and dialogs — goes through a dictionary you can replace
+(`@devicai/ui` ≥ 0.58.0). It is a plain `English text → your text` map:
+
+```tsx
+<DevicProvider
+  apiKey="devic-xxx"
+  translations={{
+    'New chat': 'Nueva conversación',
+    'Type a message...': 'Escribe un mensaje...',
+    'Close chat': 'Cerrar el chat',
+    'Send message': 'Enviar mensaje',
+  }}
+>
+  <ChatDrawer assistantId="my-assistant" />
+</DevicProvider>
+```
+
+That is the whole mechanism. No i18n runtime is bundled and there is no key
+catalogue to learn: **the key is the English text shown on screen**. The values
+come from whatever the app already uses — i18next, react-intl, a JSON file per
+locale.
+
+**Anything left out stays in English**, so a partial dictionary is fine.
+
+### Wiring it to an existing i18n setup
+
+The dictionary must be a new object when the language changes — that is what
+re-renders the widgets:
+
+```tsx
+const { t, i18n } = useTranslation('devic');
+
+<DevicProvider
+  apiKey="devic-xxx"
+  translations={useMemo(
+    () => ({
+      'New chat': t('newChat'),
+      'Type a message...': t('inputPlaceholder'),
+    }),
+    [i18n.language]
+  )}
+>
+```
+
+Memoise it (or hoist it out of the render) rather than passing an object
+literal inline: a fresh dictionary on every render rebuilds the translator each
+time, which is wasted work in a component that re-renders often.
+
+### Placeholders
+
+Texts carrying a value use `{name}` placeholders. Keep them in the translation
+— they are filled *after* the lookup, so a translation may reorder them:
+
+```tsx
+translations={{
+  '{count} messages': '{count} mensajes',
+  'Resets in {count} minutes.': 'Quedan {count} minutos para el reinicio.',
+}}
+```
+
+Counted texts come as a separate singular and plural entry (`1 message` and
+`{count} messages`), so a language that inflects differently has somewhere to
+say it.
+
+### Scoping a dictionary
+
+`ChatDrawer`, `AICommandBar`, `AIGenerationButton` and `AIElementWrapper` each
+take their own `options.translations`, merged on top of the provider's, and it
+reaches everything they mount. For anything else, wrap a subtree:
+
+```tsx
+import { DevicTranslationsProvider } from '@devicai/ui';
+
+<DevicTranslationsProvider translations={{ Close: 'Cerrar' }}>
+  <IntegrationsPanel assistantId="my-assistant" />
+</DevicTranslationsProvider>
+```
+
+Later layers win: provider → enclosing component → the component's own option.
+
+### What takes precedence
+
+Options that already set a text (`welcomeMessage`, `inputPlaceholder`, `title`,
+`integrationsLabel`, `coreMemoryLabels`, …) keep winning over the dictionary,
+which only supplies their defaults. An integration that has always set
+`inputPlaceholder` sees no change; one that never did gets it translated.
+
+### Gotchas
+
+- Copy the key **exactly**: same case, same typographic characters (`…`, `·`,
+  the curly quotes `“ ”` in the guardrail texts).
+- `AIElementWrapper` has shipped **Spanish** defaults since it was added
+  (`Preguntar a IA`, `Pensando…`, `Cerrar`), so its keys are Spanish. They
+  translate like any other key — into English included.
+- The `Elemento referenciado:` prefix is **not** translatable: `ChatMessages`
+  parses it with a regex to render the reference chips, so translating it would
+  break them.
+- The full list of texts lives in `TRANSLATIONS.md` in the `@devicai/ui` repo,
+  grouped by where each appears.
+
+### Reading the dictionary from a custom UI
+
+```tsx
+import { useTranslations } from '@devicai/ui';
+
+const t = useTranslations();
+<button>{t('Send message')}</button>
+```
+
+## Turns stopped by a guardrail
+
+An assistant with guardrails configured can have a turn stopped before it ever
+reaches the model. The backend records that as a message with
+`role: 'guard_rail'`, and the drawer draws it as a notice naming the guardrail
+that fired — not as a chat bubble, because nobody said it.
+
+Nothing has to be wired for this: it renders on its own. To say it in another
+language, translate its texts like any other:
+
+```tsx
+translations={{
+  'Your message was stopped by the “{name}” guardrail.':
+    'Tu mensaje ha sido bloqueado por el guardrail «{name}».',
+  'The answer was stopped by the “{name}” guardrail.':
+    'La respuesta ha sido bloqueada por el guardrail «{name}».',
+  'This message was stopped by a guardrail.':
+    'Este mensaje ha sido bloqueado por un guardrail.',
+}}
+```
+
+Note the curly quotes `“ ”` in the keys — copy them exactly.
+
+### Replacing the notice
+
+When it needs a different shape — to drop the guardrail's name, for instance,
+if end users should not see it — supply a renderer:
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    guardrailRenderer: ({ payload }) => (
+      <MyNotice tone="warning">
+        No puedo ayudarte con eso.
+      </MyNotice>
+    ),
+  }}
+/>
+```
+
+`payload` is the provider result the backend recorded:
+
+| Field | Meaning |
+|-------|---------|
+| `info.guardrail_name` | The guardrail that fired, e.g. `Off Topic Prompts` |
+| `info.confidence` | How sure it was |
+| `info.threshold` | The value it had to beat |
+| `info.stage_name` | `"input"` when the person's message was stopped; otherwise the answer was |
+
+`text` carries the message instead when the backend sent a plain sentence.
+Return `null` to hide the notice entirely — though a conversation that simply
+stops with no answer and no explanation reads as a bug to the person in it.
+
+### Version note
+
+Before **0.58.0**, opening a conversation stopped by a guardrail threw
+`TypeError: content.match is not a function` and took the whole drawer with it:
+the backend wrote the guardrail result *object* into `content.message`, a field
+typed as a string, and the drawer parsed it as text. Both halves are fixed —
+the drawer tolerates the object, and the backend now records a sentence with
+the object in `content.data`. Conversations stopped before that fix keep the
+object in the database, so **0.58.0 or later is required** to open them.
 
 ## Controlled Mode
 
