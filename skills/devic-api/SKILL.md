@@ -285,7 +285,20 @@ List of all built-in tool groups with their UIDs, ready to use in `availableTool
 
 For detailed documentation, see [built-in-tools.md](built-in-tools.md).
 
-### 11. Environments & Sandboxes API
+### 11. Channels API
+
+Attach the places your customers already write from — a WhatsApp number, a Slack workspace — to the tenants you already have.
+
+- Issue a link that ties a channel identity to one of your tenants; the tenant is frozen into the link and never read from a request
+- WhatsApp needs no consent screen: the link opens a chat with a short code already written, and **that first message is the consent**
+- Read what you have issued and whether anybody used it; withdraw a link without unmapping what it already bound
+- Read the directory: which workspace, number or person belongs to which customer, and who is talking without an owner yet
+
+**Base path:** `/api/v1/channels`
+
+For detailed documentation, see [channels.md](channels.md).
+
+### 12. Environments & Sandboxes API
 
 The machine an agent works on and everything it may reach.
 
