@@ -106,7 +106,7 @@ to the API after your token was minted.
 | Area | Allowed |
 |---|---|
 | The assistant | `GET /assistants`, `GET /assistants/tags`, `GET /assistants/{id}` |
-| Talking | `POST /assistants/{id}/messages`, `POST /assistants/chats`, `GET /assistants/{id}/chats`, `GET /assistants/{id}/chats/{uid}`, `.../realtime`, `.../search`, `POST .../tool-response`, `POST .../stop`, `GET`+`POST .../feedback` |
+| Talking | `POST /assistants/{id}/messages`, `POST /assistants/chats`, `GET /assistants/{id}/chats`, `GET /assistants/{id}/chats/{uid}`, `.../realtime`, `.../stream`, `.../search`, `POST .../tool-response`, `POST .../stop`, `GET`+`POST .../feedback` |
 | Agent runs | `GET /agents/{id}`, `GET /agents/threads/{id}`, `.../search`, `POST .../messages`, `.../approval`, `.../complete`, `.../pause`, `.../resume`, `GET`+`POST .../feedback` |
 | Attachments & dictation | `POST /files/upload`, `POST /whisper`, `GET /whisper/{id}` |
 | Own core memory | `GET`+`POST /memory/assistants/{id}/core`, `PATCH`+`DELETE /memory/assistants/{id}/core/{entryId}` |

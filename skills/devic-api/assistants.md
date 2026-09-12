@@ -15,6 +15,7 @@ The Assistants API allows you to interact with AI assistants that can process me
 | GET | `/api/v1/assistants/:identifier/chats` | List chat histories for assistant |
 | GET | `/api/v1/assistants/:identifier/chats/:chatUid` | Get specific chat history |
 | GET | `/api/v1/assistants/:identifier/chats/:chatUid/realtime` | Get real-time chat history (for async polling) |
+| GET | `/api/v1/assistants/:identifier/chats/:chatUid/stream` | Follow the real-time chat history over server-sent events (async mode without polling) |
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/stop` | Stop an in-progress async chat |
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/tool-response` | Submit tool responses (Model Interface Protocol) |
 | POST | `/api/v1/assistants/chats` | Get all chat histories with filters |
@@ -516,7 +517,7 @@ curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages" \
 
 ### Asynchronous Mode
 
-When `async=true`, the request returns immediately with a `chatUid`. Use this for long-running requests or when you want to avoid blocking. Poll the realtime endpoint to check for results.
+When `async=true`, the request returns immediately with a `chatUid`. Use this for long-running requests or when you want to avoid blocking. Then either poll the realtime endpoint or, better, open the [stream endpoint](#stream-real-time-chat-history-sse) and receive every change, including the reply as it is produced, over one connection.
 
 #### Example Request (Async)
 
@@ -545,6 +546,14 @@ After receiving the `chatUid`, poll the realtime endpoint to get the processing 
 ```bash
 curl -X GET "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/realtime" \
   -H "Authorization: Bearer devic-your-api-key"
+```
+
+Or follow it without polling — one connection, one `snapshot` event per change:
+
+```bash
+curl -N "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/stream" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Accept: text/event-stream"
 ```
 
 ### Error Responses
@@ -722,13 +731,16 @@ GET /api/v1/assistants/:identifier/chats/:chatUid/realtime
 | Status | Description |
 |--------|-------------|
 | `buffering` | Messages are being collected before processing (see [Message Buffering](#message-buffering-input-delay)) |
-| `processing` | Message is currently being processed by the assistant |
+| `processing` | Message is currently being processed by the assistant. The response then also carries `streamingMessage`: the assistant's partial reply so far (`{ role: "assistant", content: { message } }`), when the model is one that streams (OpenAI, Anthropic, Gemini) and the assistant has no guardrails enabled |
+| `waiting_for_tool_response` | The model called a client-side tool; submit its result with `POST …/chats/:chatUid/tool-response` (Model Interface Protocol) |
+| `handed_off` | The assistant delegated to a subagent; `handedOffSubThreadId` names the thread to watch |
+| `limit_exceeded` | A tenant usage limit blocked the message; see `limitExceeded` |
 | `completed` | Processing finished successfully |
 | `error` | An error occurred during processing |
 
 ### Polling Pattern for Async Mode
 
-When using async mode, implement a polling pattern:
+When using async mode and you cannot hold a connection open, implement a polling pattern (otherwise prefer the [stream endpoint](#stream-real-time-chat-history-sse)):
 
 ```javascript
 async function waitForResult(identifier, chatUid) {
@@ -764,6 +776,89 @@ async function waitForResult(identifier, chatUid) {
 | Status | Description |
 |--------|-------------|
 | 404 | Real-time chat history not found |
+
+---
+
+## Stream Real-Time Chat History (SSE)
+
+Follows the same real-time state as the realtime endpoint over a single **server-sent events** connection: the current state is sent immediately, then a new event every time it changes — the assistant's reply growing in `streamingMessage`, tool calls, status transitions — with no request per check. This is what `@devicai/ui` uses with `streaming` enabled.
+
+```
+GET /api/v1/assistants/:identifier/chats/:chatUid/stream
+Accept: text/event-stream
+```
+
+### Path Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `identifier` | string | The unique identifier of the assistant |
+| `chatUid` | string | The unique identifier of the chat conversation |
+
+### Response
+
+`200` with `Content-Type: text/event-stream`. Each frame is:
+
+```
+event: snapshot
+data: {"chatUID":"550e8400-…","status":"processing","chatHistory":[…],"streamingMessage":{"role":"assistant","content":{"message":"Based on the an"}},"lastUpdatedAt":1705312200000}
+
+```
+
+- `data` is exactly the `data` object the realtime endpoint returns (same fields, same status values). Frames are only sent when something changed; the first one arrives right away with the current state.
+- Comment frames (`: keep-alive`) arrive every 15 s of silence so proxies keep the connection and you can tell quiet from dead. Ignore them.
+- The server **closes the connection** when the status is terminal (`completed`, `error`, `limit_exceeded`) with nothing queued, or after **60 seconds** in any case. If the last snapshot is not terminal, open it again; nothing is lost because every frame is the full state.
+- `event: reconnect` (empty data) is sent before closing when the server hit an error: open it again.
+- Reads only: opening the stream never runs the model. Send messages with `POST …/messages?async=true` first.
+
+### Errors
+
+| Status | Description |
+|--------|-------------|
+| 401 | Missing or invalid API key |
+| 404 | Chat not found for this assistant, or no real-time state yet |
+
+### Example (browser or Node 18+)
+
+`EventSource` cannot send an `Authorization` header, so use `fetch` and parse the frames:
+
+```javascript
+async function followChat(identifier, chatUid, onSnapshot) {
+  while (true) {
+    const res = await fetch(
+      `https://api.devic.ai/api/v1/assistants/${identifier}/chats/${chatUid}/stream`,
+      { headers: { Authorization: 'Bearer devic-your-api-key', Accept: 'text/event-stream' } },
+    );
+    if (!res.headers.get('content-type')?.includes('text/event-stream')) {
+      throw new Error(`stream unavailable: ${res.status}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let last;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let end;
+      while ((end = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        if (!frame.includes('event: snapshot')) continue; // keep-alive, reconnect
+        const data = frame.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).join('');
+        last = JSON.parse(data);
+        onSnapshot(last);
+      }
+    }
+    if (last && ['completed', 'error', 'limit_exceeded'].includes(last.status)) return last;
+    // closed after 60 s or a reconnect: open again
+  }
+}
+```
+
+### When to poll instead
+
+The stream is the cheaper option for anything that shows progress: one connection per minute instead of one request per second, and the reply visible as it is written. Poll `…/realtime` when you cannot keep a connection open (serverless functions with short timeouts, schedulers) or as a fallback when the stream answers with something other than `text/event-stream`.
 
 ---
 
