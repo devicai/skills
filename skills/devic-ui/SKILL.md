@@ -1,6 +1,6 @@
 ---
 name: devic-ui
-description: Devic UI is a react component library to integrate AI UI components like chats and agents executions handler directly in your code base connected to devicai API. Covers tenant sessions (signed credentials instead of an API key in the bundle), connected apps, translating every text the library renders, and turns stopped by a guardrail.
+description: Devic UI is a react component library to integrate AI UI components like chats and agents executions handler directly in your code base connected to devicai API. Covers tenant sessions (signed credentials instead of an API key in the bundle), connected apps, translating every text the library renders, turns stopped by a guardrail, and following a reply as it is produced over server-sent events instead of polling (`streaming`, 0.59.0).
 ---
 
 # Devic UI Integration Guide
@@ -604,6 +604,80 @@ response, the turn resumes, and the model then calls the finish tool to close.
 They never collide — `finish_execution` is a backend built-in and never enters
 the client-side tool path.
 
+## Streaming Instead of Polling
+
+By default the library follows a conversation in progress by **polling**
+`GET /api/v1/assistants/:id/chats/:chatUid/realtime` once a second
+(`pollingInterval` on `DevicProvider`, in ms). Since **0.59.0** it can instead
+keep one server-sent event connection open on
+`GET /api/v1/assistants/:id/chats/:chatUid/stream` and receive every change as
+it happens, including the assistant's reply **as it is produced**. It is
+**opt-in** for now (`streaming` defaults to `false`); the default will flip
+once the endpoint has been exercised in the field.
+
+```tsx
+<DevicProvider apiKey="devic-xxx" streaming>
+  <ChatDrawer assistantId="support" />
+  {/* a component can still refuse it */}
+  <AICommandBar assistantId="support" streaming={false} />
+</DevicProvider>
+```
+
+| Where | Prop | Default |
+|-------|------|---------|
+| `DevicProvider` | `streaming` | `false` |
+| `ChatDrawer`, `AICommandBar`, `AIGenerationButton`, `AIElementWrapper` | `streaming` | provider's, else `false` |
+| `useDevicChat`, `useAICommandBar`, `useAIGenerationButton`, `useAIElementWrapper` | `streaming` | provider's, else `false` |
+| `HandoffSubagentWidget` | — | always polls (agent runs have no stream) |
+
+What changes when it is on:
+
+- **No polling while the stream is open.** The realtime endpoint is only
+  called when the stream is down (`pollingInterval` becomes that fallback
+  cadence) or for a forced refresh. A tab following a 40-second answer makes
+  one request instead of forty.
+- **The reply grows in place.** While `status` is `processing`, the snapshot
+  carries the partial assistant message in `streamingMessage`; `useDevicChat`
+  appends it to `messages` (with `isLoading: true`) so the drawer renders it as
+  it grows, and swaps it for the persisted message when the turn completes.
+  Text arrives in deltas for OpenAI, Anthropic and Gemini models. Other
+  providers behind the OpenAI-compatible route (xAI, DeepSeek, Kimi, custom
+  providers) and assistants with **guardrails** enabled still stream status
+  and tool calls but deliver the text in one piece: the model call is buffered
+  until the guardrails have validated the whole output.
+- **It is safe against an older API.** An API that does not serve the stream
+  answers with something other than `text/event-stream`; the widgets treat
+  that as "unavailable" and keep polling as before.
+- **Drops heal on their own.** The server closes each connection after
+  60 seconds and the client reopens it (250 ms later); the poll covers the
+  gap. A connection that goes silent for 30 seconds is dropped and reopened;
+  the server sends a `: keep-alive` comment every 15 seconds so a quiet
+  model turn is not mistaken for a dead socket.
+- Everything else is unchanged: message queueing, client-side tools
+  (`waiting_for_tool_response`), handoffs, usage limits and guardrail
+  notices all arrive through the same snapshots.
+
+With the hooks:
+
+```tsx
+const { messages, isLoading } = useDevicChat({
+  assistantId: 'support',
+  streaming: true, // or inherit it from DevicProvider
+});
+// while isLoading, the last item of `messages` may be the growing reply
+```
+
+Since **0.60.0** the stream is opened with `?partial=1`: while only the reply
+being written changes, the API sends the appended text (`delta`) or the reply
+so far (`partial`) instead of the whole conversation, and the library merges
+them before the hooks see a snapshot. A streamed turn then costs about half
+the bytes of polling it; on 0.59.0 it cost 6-7 times more, because every
+frame carried the full history.
+
+Requirements: `@devicai/ui` ≥ 0.59.0 (≥ 0.60.0 for the lighter frames) and an
+API that serves the stream endpoint (api.devic.ai does). Tenant sessions may call it: it is on the
+session allowlist next to `.../realtime`.
+
 ## Custom Chat UI with Hooks
 
 Build a completely custom chat interface:
@@ -962,7 +1036,7 @@ The `CustomPromptBoxProps` interface:
 | `sendMessage` | `(message: string, files?: File[], meta?: { transcriptId?: string }) => void` | Send a message (optionally with file attachments). Pass `meta.transcriptId` to link a speech-to-text transcript |
 | `transcribeAudio` | `(audio: Blob \| string, options?: { language?, messageUid?, chatUid? }) => Promise<WhisperTranscriptionResponse>` | Transcribe a binary (Blob/File) or a download URL via `/whisper`. See [speech-to-text.md](speech-to-text.md) |
 | `stop` | `() => void` | Stop the current assistant processing |
-| `isLoading` | `boolean` | Whether the assistant is currently processing / polling |
+| `isLoading` | `boolean` | Whether the assistant is currently processing (followed by polling or by the stream) |
 | `newConversation` | `() => void` | Clear the current conversation and start a new one |
 | `references` | `AIReference[]` | Active references created by AIElementWrapper components |
 | `removeReference` | `(id: string) => void` | Remove a single reference by id |
@@ -1417,6 +1491,21 @@ const checkResponse = async () => {
 };
 
 const messages = await checkResponse();
+
+// Or follow it over SSE (≥ 0.59.0): one connection, a snapshot per change.
+// Resolves when the run reaches a terminal status or the server closes the
+// stream (every 60 s) — reopen it while the status is not terminal.
+const controller = new AbortController();
+await client.streamRealtimeHistory(
+  'assistant-id',
+  chatUid,
+  (snapshot) => {
+    // same shape as getRealtimeHistory(); while processing,
+    // snapshot.streamingMessage carries the partial assistant reply
+    render(snapshot);
+  },
+  controller.signal,
+);
 ```
 
 ## Server-Side Rendering (SSR)
@@ -1599,6 +1688,7 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `limitBannerRenderer` | `(limit: TenantLimitExceeded) => ReactNode` | — | Custom usage-limit banner (input stays disabled while active) |
 | `apiKey` | `string` | — | API key (overrides provider) |
 | `baseUrl` | `string` | — | Base URL (overrides provider) |
+| `streaming` | `boolean` | provider's, else `false` | Follow the conversation over SSE instead of polling. See [Streaming Instead of Polling](#streaming-instead-of-polling) |
 | `isOpen` | `boolean` | — | Controlled open state (drawer mode only) |
 | `className` | `string` | — | Additional CSS class |
 | `onMessageSent` | `(message) => void` | — | Fires when user sends a message |
@@ -2032,6 +2122,7 @@ function CustomCommandBar() {
 | `tenantMetadata` | `TenantMetadata` | — | Tenant metadata |
 | `tags` | `string[]` | — | Conversation tags (merged/deduped with the provider's). See [Conversation Tags](#conversation-tags) |
 | `options` | `AICommandBarOptions` | — | Display and behavior options |
+| `streaming` | `boolean` | provider's, else `false` | Follow the run over SSE instead of polling. See [Streaming Instead of Polling](#streaming-instead-of-polling) |
 | `isVisible` | `boolean` | — | Controlled visibility state |
 | `onVisibilityChange` | `(visible: boolean) => void` | — | Fires when visibility changes |
 | `onExecute` | `'openDrawer' \| 'callback'` | `'callback'` | What to do on completion |
@@ -2340,6 +2431,7 @@ function CustomGenerateButton() {
 | `tenantMetadata` | `TenantMetadata` | — | Tenant metadata |
 | `tags` | `string[]` | — | Conversation tags (merged/deduped with the provider's). See [Conversation Tags](#conversation-tags) |
 | `options` | `AIGenerationButtonOptions` | — | Display and behavior options |
+| `streaming` | `boolean` | provider's, else `false` | Follow the run over SSE instead of polling. See [Streaming Instead of Polling](#streaming-instead-of-polling) |
 | `modelInterfaceTools` | `ModelInterfaceTool[]` | — | Client-side tools |
 | `onResponse` | `(result: GenerationResult) => void` | — | Fires on successful generation |
 | `onBeforeSend` | `(prompt: string) => string \| undefined` | — | Modify prompt before sending |
@@ -2488,6 +2580,7 @@ Only one wrapper across the page can show its trigger at a time; later activatio
 | `assistantId` | `string` | Required when `behavior='inline'`. |
 | `getPrompt` | `(args: { data?: any; label: string }) => string` | Builds the prompt (inline mode). |
 | `apiKey` / `baseUrl` / `tenantId` / `tenantMetadata` | overrides for the `DevicProvider`. |
+| `streaming` | `boolean` | Follow the inline run over SSE instead of polling (overrides the provider's). See [Streaming Instead of Polling](#streaming-instead-of-polling). |
 | `modelInterfaceTools` | `ModelInterfaceTool[]` | Client-side tools (inline mode). |
 | `inlineRenderer` | `(message: ChatMessage) => React.ReactNode` | Custom renderer for the inline answer. |
 | `onActivate` / `onInlineResponse` / `onError` | Callbacks. |
@@ -2587,11 +2680,11 @@ The library supports assistant-to-subagent handoff, where an assistant delegates
 
 1. The assistant calls a `hand_off_subagent` tool, which creates a subthread on the backend
 2. The realtime polling response status changes to `handed_off` with a `handedOffSubThreadId` field
-3. `useDevicChat` detects the `handed_off` status, stops main polling, and sets `handedOff: true` with the subthread ID
+3. `useDevicChat` detects the `handed_off` status, stops following the conversation (poll or stream), and sets `handedOff: true` with the subthread ID
 4. ChatInput is disabled with a "Waiting for subagent to complete" notice
 5. A `HandoffSubagentWidget` renders inline in the tool timeline, polling the subthread every 5s for status, tasks progress, and summary
 6. A background handoff poll checks the realtime endpoint every 5s to detect when the parent thread is no longer in `handed_off` state
-7. When the subthread reaches a terminal state (completed, failed, terminated), the widget calls `onHandoffCompleted` which clears handoff state and resumes main polling to pick up the parent thread's continuation
+7. When the subthread reaches a terminal state (completed, failed, terminated), the widget calls `onHandoffCompleted` which clears handoff state and resumes following the conversation (poll or stream) to pick up the parent thread's continuation. The widget itself always polls the subthread: agent runs have no stream endpoint
 
 ### Automatic Handoff in ChatDrawer
 
