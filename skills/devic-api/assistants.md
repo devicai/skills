@@ -811,6 +811,24 @@ data: {"chatUID":"550e8400-…","status":"processing","chatHistory":[…],"strea
 - `event: reconnect` (empty data) is sent before closing when the server hit an error: open it again.
 - Reads only: opening the stream never runs the model. Send messages with `POST …/messages?async=true` first.
 
+#### Lighter frames: `?partial=1`
+
+A snapshot carries the whole conversation, and one goes out per write of the reply being written (up to 20 a second). Add `?partial=1` and, while only `streamingMessage` changes, the stream sends instead:
+
+```
+event: delta
+data: {"append":" of the"}
+
+event: partial
+data: {"streamingMessage":{"uid":"…","role":"assistant","content":{"message":"Based on the analysis"}}}
+```
+
+- `delta` — text appended to `streamingMessage.content.message` since the last frame. Apply it to the message you hold.
+- `partial` — the whole `streamingMessage` again, when the text does not simply extend the previous one (another message started, a rewrite). `{"streamingMessage":null}` means the partial text is gone.
+- A full `snapshot` still arrives whenever anything else changes (status, tool calls, history), and always first.
+
+Measured on a 500-word reply: about half the bytes of polling once a second, against 6-7 times without the parameter. `@devicai/ui` asks for it since 0.60.0; an API that predates the parameter ignores it and sends full snapshots.
+
 ### Errors
 
 | Status | Description |
@@ -826,7 +844,7 @@ data: {"chatUID":"550e8400-…","status":"processing","chatHistory":[…],"strea
 async function followChat(identifier, chatUid, onSnapshot) {
   while (true) {
     const res = await fetch(
-      `https://api.devic.ai/api/v1/assistants/${identifier}/chats/${chatUid}/stream`,
+      `https://api.devic.ai/api/v1/assistants/${identifier}/chats/${chatUid}/stream?partial=1`,
       { headers: { Authorization: 'Bearer devic-your-api-key', Accept: 'text/event-stream' } },
     );
     if (!res.headers.get('content-type')?.includes('text/event-stream')) {
@@ -844,9 +862,13 @@ async function followChat(identifier, chatUid, onSnapshot) {
       while ((end = buffer.indexOf('\n\n')) !== -1) {
         const frame = buffer.slice(0, end);
         buffer = buffer.slice(end + 2);
-        if (!frame.includes('event: snapshot')) continue; // keep-alive, reconnect
         const data = frame.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).join('');
-        last = JSON.parse(data);
+        if (frame.includes('event: snapshot')) last = JSON.parse(data);
+        else if (frame.includes('event: partial') && last) last = { ...last, ...JSON.parse(data) };
+        else if (frame.includes('event: delta') && last?.streamingMessage) {
+          const m = last.streamingMessage;
+          last = { ...last, streamingMessage: { ...m, content: { ...m.content, message: (m.content?.message ?? '') + JSON.parse(data).append } } };
+        } else continue; // keep-alive, reconnect
         onSnapshot(last);
       }
     }

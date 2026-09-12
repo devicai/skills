@@ -667,8 +667,15 @@ const { messages, isLoading } = useDevicChat({
 // while isLoading, the last item of `messages` may be the growing reply
 ```
 
-Requirements: `@devicai/ui` ≥ 0.59.0 and an API that serves the stream
-endpoint (api.devic.ai does). Tenant sessions may call it: it is on the
+Since **0.60.0** the stream is opened with `?partial=1`: while only the reply
+being written changes, the API sends the appended text (`delta`) or the reply
+so far (`partial`) instead of the whole conversation, and the library merges
+them before the hooks see a snapshot. A streamed turn then costs about half
+the bytes of polling it; on 0.59.0 it cost 6-7 times more, because every
+frame carried the full history.
+
+Requirements: `@devicai/ui` ≥ 0.59.0 (≥ 0.60.0 for the lighter frames) and an
+API that serves the stream endpoint (api.devic.ai does). Tenant sessions may call it: it is on the
 session allowlist next to `.../realtime`.
 
 ## Custom Chat UI with Hooks
