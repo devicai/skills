@@ -54,7 +54,7 @@ The Tenants API is split into three URL subtrees so you can grant fine-grained a
 |---------|----------------|--------------|
 | `/api/v1/tenants/*` | **Tenants** | Tenant/subtenant management + cost (read/write). Full keys. |
 | `/api/v1/tenant-usage/*` | **Tenant usage** | Read-only limits/consumption/history. Part of the **devic-ui** key preset. |
-| `/api/v1/tenant-admin/*` | **Tenant admin** | Reset counters & change tier (e.g. checkout/upgrade webhooks). **Full keys only** — deliberately excluded from the devic-ui preset, so restricted keys are `403`'d at the gateway. |
+| `/api/v1/tenant-admin/*` | **Tenant admin** | Reset counters, change tier & add externally-measured usage (e.g. checkout/upgrade webhooks). **Full keys only** — deliberately excluded from the devic-ui preset, so restricted keys are `403`'d at the gateway. |
 
 All endpoints authenticate with the standard `Authorization: Bearer devic-...` header and are scoped to the calling account (`clientUID`); you only ever see your own tenants.
 
@@ -266,7 +266,7 @@ GET /api/v1/tenant-usage/:tenantId
 }
 ```
 
-`usage` is one entry per applicable rule with live `current`/`percent` from the realtime counters and the `resetsAt` epoch (ms) when the window rolls over. `origin` is `tier` (from the assigned/default tier) or `adhoc` (a per-tenant override).
+`usage` is one entry per applicable rule with live `current`/`percent` from the realtime counters and the `resetsAt` epoch (ms) when the window rolls over. `origin` is `tier` (from the assigned/default tier) or `adhoc` (a per-tenant override). A rule also carries `externalConsumption` when part of its `current` was injected through [Add Usage](#add-usage-inject-usage-measured-outside-devic) rather than measured by Devic — measured is `current - externalConsumption`.
 
 ## Subtenant Usage
 
@@ -312,6 +312,44 @@ POST /api/v1/tenant-admin/:tenantId/subtenants/:subtenantId/usage-limits/reset
 ```
 
 The tenant-level route also accepts `?subtenantId=` as an alternative to the nested path. Clears the realtime counters so consumption restarts from zero (e.g. after a manual top-up).
+
+## Add Usage (inject usage measured outside Devic)
+
+```
+POST /api/v1/tenant-admin/:tenantId/add-usage
+POST /api/v1/tenant-admin/:tenantId/subtenants/:subtenantId/add-usage
+```
+
+Charges consumption your own product measured against the tenant's allowance. It consumes quota **exactly like a call Devic measured**: cross a window's ceiling this way and the next real request gets the same `429 TENANT_LIMIT_EXCEEDED`.
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tokens` | integer | No* | Tokens to add (>= 0, rounded to an integer) |
+| `cost` | number | No* | Cost to add (>= 0), same unit as the tenant's cost rules |
+| `source` | string | No | Tag this injection is filed under — `[a-z0-9_-]`, max 40 chars, defaults to `external` |
+| `reason` | string | No | Free-text note for your own auditing |
+
+\* At least one of `tokens`/`cost` must be greater than 0, or the call is `400`. **Only adds**: negative amounts are `400` — use `/usage-limits/reset` to clear counters.
+
+### Response
+
+| Field | Description |
+|-------|-------------|
+| `source` | The normalized (lowercased) source tag it was filed under |
+| `applied.tokens` / `applied.cost` | What was actually added |
+| `applied.countedTowardLimits` | `false` when the tenant has no tier and no ad-hoc rules — recorded for cost reporting, but there is no quota to consume |
+| `usage` | Every effective rule after the injection, so the remaining allowance is visible without a second call. Each rule carries `externalConsumption`: the injected slice of its `current` |
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/tenant-admin/acme-corp/add-usage" \
+  -H "Authorization: Bearer devic-your-full-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{ "tokens": 1500, "cost": 0.42, "source": "crm-sync" }'
+```
+
+The `source` tag is what keeps injected usage separable from measured usage: `GET /api/v1/tenant-usage/:tenantId` reports `externalConsumption` per rule, the usage history carries it per closed window, and the cost aggregates break it down per source. Tenant session tokens are rejected here, so a tenant can never inject usage onto itself.
 
 ## Change Tier (plan)
 
