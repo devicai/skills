@@ -1,6 +1,6 @@
 ---
 name: devic-ui
-description: Devic UI is a react component library to integrate AI UI components like chats and agents executions handler directly in your code base connected to devicai API. Covers tenant sessions (signed credentials instead of an API key in the bundle), connected apps, translating every text the library renders, turns stopped by a guardrail, and following a reply as it is produced over server-sent events instead of polling (`streaming`, 0.59.0).
+description: Devic UI is a react component library to integrate AI UI components like chats and agents executions handler directly in your code base connected to devicai API. Covers tenant sessions (signed credentials instead of an API key in the bundle), connected apps, translating every text the library renders, turns stopped by a guardrail, pinning messages of a long conversation, and following a reply as it is produced over server-sent events instead of polling (`streaming`, 0.59.0).
 ---
 
 # Devic UI Integration Guide
@@ -1359,6 +1359,72 @@ the drawer tolerates the object, and the backend now records a sentence with
 the object in `content.data`. Conversations stopped before that fix keep the
 object in the database, so **0.58.0 or later is required** to open them.
 
+## Pinned Messages
+
+In a long conversation the answer worth keeping is rarely the last one. The
+drawer lets the reader pin any user or assistant message and keeps the pinned
+ones in a bar above the conversation. **On by default**; nothing has to be
+wired beyond the API key (or tenant session) reaching
+`/api/v1/assistants/{id}/chats/{chatUid}/pins`.
+
+- **Pin / unpin a message** — the pin button in the message footer (on hover;
+  it stays visible once the message is pinned).
+- **The bar** shows one pin at a time: the beginning of the message and a
+  thumbnail when it carries an image or an attachment. A segmented line on its
+  left edge has one segment per pin, the one shown highlighted.
+- **Clicking the bar** scrolls to that message, flashes it, and moves on to the
+  previous pin — clicking again walks back through all of them.
+- **The list button** opens every pin at once, each with its own unpin; the
+  pin-off button unpins the one shown.
+- **The arrow back down** floats above the prompt box whenever the reader is
+  scrolled away from the latest message.
+
+The pins live on the conversation, not in the browser: every client that opens
+it sees the same ones, and they survive a reload. At most 50 per conversation.
+
+```tsx
+<ChatDrawer
+  assistantId="my-assistant"
+  options={{
+    showPinnedMessages: true,        // default — false turns the whole feature off
+    showScrollToBottomButton: true,  // default
+    // Replace the bar with your own component:
+    pinnedMessagesRenderer: ({ pins, scrollToMessage, unpin }) => (
+      <MyPinnedStrip
+        items={pins.map((p) => ({ id: p.messageUid, text: p.preview, thumb: p.thumbnail }))}
+        onOpen={scrollToMessage}
+        onRemove={unpin}
+      />
+    ),
+  }}
+/>
+```
+
+Each entry of `pins` (conversation order):
+
+| Field | Meaning |
+|-------|---------|
+| `messageUid` | Server uid of the pinned message |
+| `role` | `'user'` or `'assistant'` |
+| `pinnedAt` / `pinnedBy` | When and by whom |
+| `message` | The `ChatMessage` as the drawer renders it |
+| `preview` | The beginning of the text, plain, on one line — empty for a message that is only attachments |
+| `thumbnail` | `{ kind: 'image', url, name }` or `{ kind: 'file', name, extension }` when it carries any |
+
+`PinnedMessagesBar` is exported to wrap the built-in bar instead of rewriting
+it; a renderer returning `null` hides the bar and keeps the pin buttons.
+
+With the hook: `useDevicChat()` returns `pinnedMessages`, `pinMessage(messageUid)`
+and `unpinMessage(messageUid)`. Both apply at once and roll back (reporting
+through `error`/`onError`) if the API refuses. Pin by the **server** uid —
+`message.serverUid ?? message.uid`; queued, streaming or not-yet-matched
+optimistic messages cannot be pinned.
+
+Texts to translate: `Pin message`, `Unpin message`, `Pinned message`,
+`Pinned message #{index}`, `Pinned messages`, `All pinned messages`,
+`{count} pinned messages`, `Go to pinned message`, `Scroll to the latest message`,
+`You`, `Assistant`, `Image`, `Attachment`, `Message`.
+
 ## Controlled Mode
 
 Control the drawer state externally:
@@ -1748,8 +1814,11 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `handoffWidgetRenderer` | `(props: { thread, agent, elapsedSeconds, isTerminal }) => ReactNode` | — | Custom renderer for the HandoffSubagentWidget (replaces default UI) |
 | `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
 | `customPromptBox` | `(props: CustomPromptBoxProps) => ReactNode` | — | Replace the default input area with a custom component. Receives `sendMessage`, `transcribeAudio`, `stop`, `isLoading`, `newConversation` and reference helpers |
-| `userMessageRenderer` | `MessageBubbleRenderer` | — | Replace the built-in markdown renderer for **user** message bubbles. Receives `{ message, content, role, references }` |
-| `assistantMessageRenderer` | `MessageBubbleRenderer` | — | Replace the built-in markdown renderer for **assistant** message bubbles. Receives `{ message, content, role, references }` |
+| `userMessageRenderer` | `MessageBubbleRenderer` | — | Replace the built-in markdown renderer for **user** message bubbles. Receives `{ message, content, role, references, pinned }` |
+| `assistantMessageRenderer` | `MessageBubbleRenderer` | — | Replace the built-in markdown renderer for **assistant** message bubbles. Receives `{ message, content, role, references, pinned }` |
+| `showPinnedMessages` | `boolean` | `true` | Pin buttons on messages and the pinned-messages bar. See [Pinned Messages](#pinned-messages) |
+| `pinnedMessagesRenderer` | `(props: PinnedMessagesRendererProps) => ReactNode` | — | Replace the pinned-messages bar. Receives `{ pins, scrollToMessage, unpin }` |
+| `showScrollToBottomButton` | `boolean` | `true` | Floating arrow above the prompt box while scrolled away from the latest message |
 | `showIntegrationsButton` | `boolean` | `true` | Allow the connected-apps control in the header. Shows only when the assistant offers apps. See [connected-apps.md](connected-apps.md) |
 | `integrationsLabel` | `string` | `'Connected apps'` | Tooltip / accessible name of that control |
 | `maxIntegrationLogos` | `number` | `6` | App logos before the rest are counted in a `+N` box |
