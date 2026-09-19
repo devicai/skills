@@ -17,6 +17,7 @@ The Assistants API allows you to interact with AI assistants that can process me
 | GET | `/api/v1/assistants/:identifier/chats/:chatUid/realtime` | Get real-time chat history (for async polling) |
 | GET | `/api/v1/assistants/:identifier/chats/:chatUid/stream` | Follow the real-time chat history over server-sent events (async mode without polling) |
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/stop` | Stop an in-progress async chat |
+| POST | `/api/v1/assistants/:identifier/chats/:chatUid/resume` | End a timed assistant pause early and continue the same turn |
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/tool-response` | Submit tool responses (Model Interface Protocol) |
 | POST | `/api/v1/assistants/chats` | Get all chat histories with filters |
 | GET | `/api/v1/assistants/tags` | Get unique tags from chat histories |
@@ -556,6 +557,31 @@ curl -N "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4
   -H "Accept: text/event-stream"
 ```
 
+When an asynchronous subagent finishes, its result is inserted into the parent
+conversation as a provider-compatible `role: "user"` message. It is synthetic,
+not human input: `source: "subagent"`, `synthetic: true` and
+`eventType: "subagent_result"` identify it. In its structured content,
+`data.result` is the subagent output and `data.status` is the terminal outcome
+of that child thread (`completed`, `failed`, `terminated`,
+`approval_rejected`, `guardrail_trigger` or `limit_exceeded`). The status does
+not describe the parent assistant conversation. A batched delivery exposes the
+same fields on each item in `data.subagentResults`.
+
+Subagent threads keep the parent conversation's tenant, subtenant and user
+attribution. Caller-supplied metadata is copied to the child, while resolved
+tenant/subtenant runtime metadata is applied only in memory during execution
+and is not persisted into the child thread. This prevents decrypted runtime
+secrets from being duplicated in execution records.
+
+Before a queued subagent starts, Devic checks user, tenant and subtenant limits
+again using the inherited identity and the child agent ID. A blocked child
+finishes as `limit_exceeded` and reports that terminal result to the parent.
+Successful usage and cost are charged to the parent's tenant/subtenant and
+user, but the resource breakdown points to the child agent and its project.
+Limits are checked before dispatch and accounted from actual usage; they are
+not an atomic upfront reservation, so already-running parallel children can
+produce a small concurrent overrun near a limit.
+
 ### Error Responses
 
 | Status | Description |
@@ -927,6 +953,57 @@ POST /api/v1/assistants/:identifier/chats/:chatUid/stop
 
 ```bash
 curl -X POST "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/stop" \
+  -H "Authorization: Bearer devic-your-api-key"
+```
+
+---
+
+## Resume a Timed Assistant Pause Early
+
+When an assistant has the built-in `pause_and_resume` tool enabled, it can park
+the current turn until a deadline. This endpoint ends that wait immediately:
+
+```
+POST /api/v1/assistants/:identifier/chats/:chatUid/resume
+```
+
+The claim is atomic with the scheduled resume, so a scheduler tick and a user
+click cannot continue the same turn twice. The pending tool call is closed with
+a normal `role: "tool"` result explaining that the user requested the early
+resume. That tool response also reports the original pause-call timestamp, the
+actual resume timestamp, elapsed time, scheduled deadline, requested duration,
+and remaining time, and explicitly asks the model to judge whether enough time
+has really passed. Only the response body of the original tool call changes; no
+synthetic user message is added. The conversation therefore remains compatible
+with model-provider message formats. Model Interface tool schemas saved with
+the original turn are restored for the continuation.
+
+The endpoint returns as soon as the continuation starts. Follow `.../stream`
+(preferred) or `.../realtime` for the new model output.
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "chatUid": "550e8400-e29b-41d4-a716-446655440000",
+    "outcome": "resume_started",
+    "resumedEarly": true,
+    "previousPausedUntil": 1790251825000
+  }
+}
+```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | The chat is not paused, its pause tool call is already closed, or another resume already claimed it |
+| 404 | The chat does not belong to the selected assistant |
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/resume" \
   -H "Authorization: Bearer devic-your-api-key"
 ```
 
