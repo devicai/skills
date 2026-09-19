@@ -1,6 +1,6 @@
 ---
 name: devic-ui
-description: Devic UI is a react component library to integrate AI UI components like chats and agents executions handler directly in your code base connected to devicai API. Covers tenant sessions (signed credentials instead of an API key in the bundle), connected apps, translating every text the library renders, turns stopped by a guardrail, and following a reply as it is produced over server-sent events instead of polling (`streaming`, 0.59.0).
+description: Integrate Devic assistants and agents in React with @devicai/ui. Covers chat streaming, asynchronous subagents, timed pause/resume, scoped cancellation, tenant sessions, connected apps, translations, guardrails, and custom UI hooks.
 ---
 
 # Devic UI Integration Guide
@@ -628,7 +628,7 @@ once the endpoint has been exercised in the field.
 | `DevicProvider` | `streaming` | `false` |
 | `ChatDrawer`, `AICommandBar`, `AIGenerationButton`, `AIElementWrapper` | `streaming` | provider's, else `false` |
 | `useDevicChat`, `useAICommandBar`, `useAIGenerationButton`, `useAIElementWrapper` | `streaming` | provider's, else `false` |
-| `HandoffSubagentWidget` | — | always polls (agent runs have no stream) |
+| `HandoffSubagentWidget` | `streaming` | provider's, else `false` |
 
 What changes when it is on:
 
@@ -636,6 +636,9 @@ What changes when it is on:
   called when the stream is down (`pollingInterval` becomes that fallback
   cadence) or for a forced refresh. A tab following a 40-second answer makes
   one request instead of forty.
+- **Agent-thread lifecycle is streamed too.** Each handoff widget follows
+  `GET /api/v1/agents/threads/:threadId/stream`; its 5 s poll remains only as
+  fallback for an older API, a broken stream, or a silent connection.
 - **The reply grows in place.** While `status` is `processing`, the snapshot
   carries the partial assistant message in `streamingMessage`; `useDevicChat`
   appends it to `messages` (with `isLoading: true`) so the drawer renders it as
@@ -677,6 +680,81 @@ frame carried the full history.
 Requirements: `@devicai/ui` ≥ 0.59.0 (≥ 0.60.0 for the lighter frames) and an
 API that serves the stream endpoint (api.devic.ai does). Tenant sessions may call it: it is on the
 session allowlist next to `.../realtime`.
+
+## Asynchronous subagents, timed pause, and stopping
+
+An assistant can launch one or many subagent executions without blocking its
+own turn. A batched `hand_off_subagent` response carries `executions[]`; the
+same configured agent may appear several times with different inputs. Devic UI
+normalizes legacy single launches and batches into the same UI:
+
+- Consecutive launches form one compact timeline widget. It shows three rows
+  initially and summarizes the rest as `N more`; every hidden child is still
+  monitored independently.
+- `showSubagentActivity` (default `true`) adds a closable tray above the prompt.
+  It distinguishes queued work from running work and sorts running children
+  first, followed by queued children. Exported `SubagentActivityTray` and
+  `collectSubagentActivities` support custom layouts.
+- Synthetic results keep provider-compatible `role: 'user'`, but
+  `source: 'subagent'`, `synthetic: true` and `eventType` identify them. The
+  library renders them as compact execution-result rows, not user bubbles.
+- With `streaming`, the parent stream uses follow mode, so it stays attached
+  across a completed parent turn until child results and their continuation
+  arrive. Thread widgets stream lifecycle separately and share their terminal
+  snapshots with the tray.
+
+Timed `pause_and_resume` is backend-owned. When enabled on the assistant, a
+pause appears as `status: 'paused_for_resume'`; the widget does not poll
+continuously while waiting. Model Interface tool schemas sent on the original
+request are restored by the backend for the scheduled continuation, so the
+browser does not need to resend them. The built-in pause widget exposes
+**Resume now**: the API atomically closes the pending pause tool call with a
+tool response that informs the model that the user ended the wait early. The
+same response includes the original pause timestamp, actual resume timestamp,
+elapsed time, deadline, requested duration, and remaining time so the model can
+decide whether enough time has passed. It then continues the same turn over the
+existing SSE lifecycle; no additional user message is synthesized.
+
+The presentation is replaceable without reimplementing the transition:
+
+```tsx
+<ChatDrawer
+  assistantId="support"
+  options={{
+    pauseWidgetRenderer: ({ pausedUntil, pausedReason, isResuming, error, resumeNow }) => (
+      <MyPauseBanner
+        deadline={pausedUntil}
+        reason={pausedReason}
+        busy={isResuming}
+        error={error}
+        onResume={() => void resumeNow()}
+      />
+    ),
+  }}
+/>
+```
+
+`useDevicChat` and `CustomPromptBoxProps` expose the same `pausedUntil`,
+`pausedReason`, `isResumingPause`, `resumePauseError`, and `resumeNow()` fields.
+Do not synthesize another user message to resume: calling `resumeNow()` keeps
+the original provider-compatible assistant-tool/tool-response sequence and the
+persisted Model Interface tool definitions.
+
+Stopping has two explicit scopes:
+
+```tsx
+const chat = useDevicChat({ assistantId: 'support' });
+
+await chat.stopChat('turn');         // stop this response; children continue
+await chat.stopChat('conversation'); // cancel the run and active subagents
+```
+
+The hook and `DevicApiClient.stopChat` default to `turn` for compatibility.
+The built-in drawer's primary stop action explicitly uses `conversation`, and
+its adjacent menu offers **Stop current response**. Conversation cancellation
+also closes handoff, timed pause and pending asynchronous-tool gates, discards
+queued messages (returned as `restoredText`), and suppresses late subagent
+callbacks. A later real user message starts a new logical run in the same chat.
 
 ## Custom Chat UI with Hooks
 
@@ -1013,7 +1091,10 @@ function MyPromptBox({ sendMessage, stop, isLoading, newConversation }: CustomPr
         style={{ flex: 1 }}
       />
       {isLoading ? (
-        <button onClick={stop}>Stop</button>
+        <>
+          <button onClick={() => stop('conversation')}>Cancel all</button>
+          <button onClick={() => stop('turn')}>Stop response</button>
+        </>
       ) : (
         <button onClick={handleSend} disabled={!text.trim()}>Send</button>
       )}
@@ -1035,7 +1116,7 @@ The `CustomPromptBoxProps` interface:
 |------|------|-------------|
 | `sendMessage` | `(message: string, files?: File[], meta?: { transcriptId?: string }) => void` | Send a message (optionally with file attachments). Pass `meta.transcriptId` to link a speech-to-text transcript |
 | `transcribeAudio` | `(audio: Blob \| string, options?: { language?, messageUid?, chatUid? }) => Promise<WhisperTranscriptionResponse>` | Transcribe a binary (Blob/File) or a download URL via `/whisper`. See [speech-to-text.md](speech-to-text.md) |
-| `stop` | `() => void` | Stop the current assistant processing |
+| `stop` | `(scope?: 'turn' \| 'conversation') => void` | Stop the response (`turn`, default) or cancel the logical run and active subagents (`conversation`) |
 | `isLoading` | `boolean` | Whether the assistant is currently processing (followed by polling or by the stream) |
 | `newConversation` | `() => void` | Clear the current conversation and start a new one |
 | `references` | `AIReference[]` | Active references created by AIElementWrapper components |
@@ -1579,7 +1660,9 @@ import type {
 
   // API types
   RealtimeChatHistory,  // Includes status (with 'handed_off') and handedOffSubThreadId
-  RealtimeStatus,       // 'processing' | 'completed' | 'error' | 'waiting_for_tool_response' | 'handed_off'
+  RealtimeStatus,       // Also includes handed_off, paused_for_resume, buffering and limit_exceeded
+  StopScope,
+  StopChatResponse,
   AssistantSpecialization, // Includes tenantIntegrations { enabled, count }
   WhisperTranscriptionResponse,
   DevicApiClientConfig,
@@ -1611,6 +1694,9 @@ import type {
   AgentTaskDto,
   AgentDto,
   HandOffToolResponse,
+  SubagentActivity,
+  SubagentActivityStatus,
+  SubagentActivityTrayProps,
 
   // Reference chip types
   ReferenceChipProps,
@@ -1720,6 +1806,8 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `suggestedMessages` | `(string \| SuggestedMessage)[]` | — | Quick action suggestions. Accepts plain strings or objects with `content` (ReactNode) and `message` (string to send on click) |
 | `inputPlaceholder` | `string` | `'Type a message...'` | Input placeholder text |
 | `showToolTimeline` | `boolean` | `true` | Show tool execution timeline |
+| `showSubagentActivity` | `boolean` | `true` | Show the compact, closable async-subagent tray above the prompt |
+| `pauseWidgetRenderer` | `(props: AssistantPauseWidgetProps) => ReactNode` | — | Replace the timed-pause card. Props include the deadline/reason, request state/error and the working `resumeNow()` action |
 | `enableFileUploads` | `boolean` | `false` | Enable file attachments |
 | `allowedFileTypes` | `AllowedFileTypes` | — | Filter by file type (images, documents, audio, video) |
 | `maxFileSize` | `number` | `10485760` | Max file size in bytes (10MB) |
@@ -2674,17 +2762,23 @@ The `DevicProvider` now exposes references and drawer registration in the contex
 
 ## Subagent Handoff System
 
-The library supports assistant-to-subagent handoff, where an assistant delegates work to a specialized agent. During handoff, the chat input is automatically disabled and a widget displays the subagent's progress in real time.
+The library supports both blocking handoff and asynchronous parallel
+delegation. A blocking handoff disables the chat input until the child returns;
+an async handoff lets the parent finish and keeps its children visible in the
+aggregate timeline widget and activity tray.
 
 ### How It Works
 
-1. The assistant calls a `hand_off_subagent` tool, which creates a subthread on the backend
-2. The realtime polling response status changes to `handed_off` with a `handedOffSubThreadId` field
-3. `useDevicChat` detects the `handed_off` status, stops following the conversation (poll or stream), and sets `handedOff: true` with the subthread ID
-4. ChatInput is disabled with a "Waiting for subagent to complete" notice
-5. A `HandoffSubagentWidget` renders inline in the tool timeline, polling the subthread every 5s for status, tasks progress, and summary
-6. A background handoff poll checks the realtime endpoint every 5s to detect when the parent thread is no longer in `handed_off` state
-7. When the subthread reaches a terminal state (completed, failed, terminated), the widget calls `onHandoffCompleted` which clears handoff state and resumes following the conversation (poll or stream) to pick up the parent thread's continuation. The widget itself always polls the subthread: agent runs have no stream endpoint
+1. `hand_off_subagent` creates one subthread, or several through `executions[]`.
+2. Blocking mode reports `handed_off`; `useDevicChat` disables the input and
+   resumes the parent when the child reaches a terminal state.
+3. Async mode acknowledges immediately. The parent may finish while the child
+   remains queued/processing, so the conversation stream stays open in follow
+   mode without presenting the parent as busy.
+4. Each `HandoffSubagentWidget` follows the child over SSE when streaming is
+   enabled and uses the configured polling interval as fallback.
+5. Terminal results arrive as synthetic conversation messages and are grouped
+   into compact result rows; they can trigger a new parent turn automatically.
 
 ### Automatic Handoff in ChatDrawer
 
@@ -2729,6 +2823,7 @@ import { HandoffSubagentWidget } from '@devicai/ui';
 
 <HandoffSubagentWidget
   subThreadId="thread-abc-123"
+  streaming
   onCompleted={() => console.log('Subagent finished')}
   renderWidget={({ thread, agent, elapsedSeconds, isTerminal }) => (
     <MyCustomWidget thread={thread} agent={agent} />
@@ -2744,6 +2839,9 @@ import { HandoffSubagentWidget } from '@devicai/ui';
 | `onCompleted` | `() => void` | — | Called when subthread reaches a terminal state |
 | `apiKey` | `string` | — | API key (overrides provider) |
 | `baseUrl` | `string` | — | Base URL (overrides provider) |
+| `streaming` | `boolean` | provider's, else `false` | Follow the thread lifecycle over SSE, retaining polling as fallback |
+| `pollingInterval` | `number` | `5000` | Fallback polling cadence (minimum 250 ms) |
+| `compact` | `boolean` | `false` | Render as an expandable row inside an aggregate handoff widget |
 | `renderWidget` | `(props: { thread, agent, elapsedSeconds, isTerminal }) => ReactNode` | — | Custom renderer replacing the entire widget |
 
 ### useDevicChat Handoff Fields
