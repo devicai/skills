@@ -19,6 +19,9 @@ The Assistants API allows you to interact with AI assistants that can process me
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/stop` | Stop an in-progress async chat |
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/resume` | End a timed assistant pause early and continue the same turn |
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/tool-response` | Submit tool responses (Model Interface Protocol) |
+| GET | `/api/v1/assistants/:identifier/chats/:chatUid/pins` | List the pinned messages of a conversation |
+| POST | `/api/v1/assistants/:identifier/chats/:chatUid/pins` | Pin a user or assistant message |
+| DELETE | `/api/v1/assistants/:identifier/chats/:chatUid/pins/:messageUid` | Unpin a message |
 | POST | `/api/v1/assistants/chats` | Get all chat histories with filters |
 | GET | `/api/v1/assistants/tags` | Get unique tags from chat histories |
 
@@ -1004,6 +1007,87 @@ The endpoint returns as soon as the continuation starts. Follow `.../stream`
 
 ```bash
 curl -X POST "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/resume" \
+  -H "Authorization: Bearer devic-your-api-key"
+```
+
+---
+
+## Pinned Messages
+
+Any `user` or `assistant` message of a conversation can be pinned to keep it at
+hand in a long chat. The pins are stored **on the conversation**, so every
+client that opens it sees the same ones (`@devicai/ui` draws them as a bar above
+the chat). A conversation keeps at most **50** pinned messages.
+
+```
+GET    /api/v1/assistants/:identifier/chats/:chatUid/pins
+POST   /api/v1/assistants/:identifier/chats/:chatUid/pins
+DELETE /api/v1/assistants/:identifier/chats/:chatUid/pins/:messageUid
+```
+
+### Request Body (POST)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `messageUid` | string | Yes | `uid` of the message in `chatContent`. A message of the run still in flight (only in the realtime history) can be pinned too |
+
+### Response
+
+All three endpoints answer with the whole list after the change, in the order
+the messages appear in the conversation — not the order they were pinned — each
+with the message attached:
+
+```json
+{
+  "success": true,
+  "data": {
+    "chatUid": "550e8400-e29b-41d4-a716-446655440000",
+    "maxPinnedMessages": 50,
+    "pinnedMessages": [
+      {
+        "messageUid": "5b1d…",
+        "role": "assistant",
+        "pinnedAt": 1726650000000,
+        "pinnedBy": "user-uid",
+        "message": { "uid": "5b1d…", "role": "assistant", "content": { "message": "…" }, "timestamp": 1726649990000 }
+      }
+    ]
+  }
+}
+```
+
+`message` is `null` when the pinned message is no longer in the conversation;
+such a pin comes last and can still be removed.
+
+The chat history (`GET /chats/:chatUid`) also carries `pinnedMessages`, as
+stored — `messageUid`, `role`, `pinnedAt`, `pinnedBy`, in the order they were
+pinned and without the message.
+
+### Behavior
+
+- Pinning a message that is already pinned succeeds and changes nothing, and so
+  does unpinning one that is not pinned — both are safe to retry.
+- Pins are written atomically and apart from the message history, so a pin made
+  while the assistant is answering is not lost when the run saves the
+  conversation.
+- With a tenant session, only the session's own conversations can be pinned.
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | `messageUid` missing, the message is not a `user` or `assistant` message, or the conversation already keeps 50 pinned messages |
+| 404 | Chat not found for this assistant, or the message is not in it |
+
+### Example
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/pins" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"messageUid": "5b1d…"}'
+
+curl -X DELETE "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/pins/5b1d…" \
   -H "Authorization: Bearer devic-your-api-key"
 ```
 
