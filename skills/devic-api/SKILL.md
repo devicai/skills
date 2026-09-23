@@ -1,6 +1,6 @@
 ---
 name: devic-api
-description: Devic AI Platform API reference for assistants, agents, tool servers, knowledge documents and skills, tenants (multi-tenant cost & usage limits) and tenant sessions (signed tokens for browser credentials). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
+description: Devic AI Platform API reference for assistants, agents, tool servers, code snippets, knowledge documents and skills, tenants (multi-tenant cost & usage limits) and tenant sessions (signed tokens for browser credentials). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
 ---
 
 # Devic API
@@ -128,7 +128,8 @@ Understanding how the core entities relate to each other is essential for buildi
 **Assistant Specialization**: The core configuration object that defines how an AI assistant or agent behaves. It includes:
 - `presets` - System prompt instructions. May contain `{{placeholder}}` variables that are filled at request time via `metadata.promptTemplateParams` (see [assistants.md](assistants.md#prompt-template-parameters) and [agents.md](agents.md#prompt-template-parameters))
 - `availableToolsGroupsUids` - Array of tool group identifiers that determine available tools
-- `enabledTools` - Optional allowlist of tool identifiers across the assigned groups. `null` (or absent) enables every tool of those groups, `[]` enables none. On a partial update, omit it to leave the current selection untouched
+- `enabledTools` - Optional allowlist of tool identifiers across the assigned groups and the attached code snippets. `null` (or absent) enables every tool, `[]` enables none. On a partial update, omit it to leave the current selection untouched
+- `codeSnippetIds` - [Code snippets](code-snippets.md) the entity can call as tools. With an `enabledTools` list, each snippet's `toolName` has to be in it
 - `model` / `provider` - Default LLM configuration
 - `memoryDocuments` - Persistent context documents
 
@@ -313,6 +314,19 @@ The machine an agent works on and everything it may reach.
 **Base path:** `/api/v1/environments`
 
 For detailed documentation, see [environments.md](environments.md).
+
+### 13. Code Snippets API
+
+Functions you write once and give to agents and assistants as tools.
+
+- Create snippets in JavaScript, TypeScript or Python: a `main(input)` function plus the JSON Schema of `input`
+- Every change to the code or the contract saves a version; `expectedVersion` refuses stale overwrites with `409`
+- Run a saved snippet in an isolated sandbox with your inputs or its saved test cases
+- Attach one to an agent or assistant by listing its id in `codeSnippetIds`
+
+**Base path:** `/api/v1/code-snippets`
+
+For detailed documentation, see [code-snippets.md](code-snippets.md).
 
 ## Pagination
 
