@@ -217,11 +217,11 @@ The `assistantSpecialization` defines the agent's behavior, tools, and capabilit
 | `name` | string | Specialization name |
 | `presets` | string | System prompt / instructions |
 | `availableToolsGroupsUids` | string[] | Tool group IDs the agent can use |
-| `enabledTools` | string[] \| null | Explicit subset of enabled tool names. `null` enables every tool of the assigned groups, `[]` enables none |
+| `enabledTools` | string[] \| null | Explicit subset of enabled tool names, attached code snippets included (by their `toolName`). `null` enables every tool, `[]` enables none |
 | `model` | string | Default model |
 | `provider` | string | Default LLM provider |
 | `memoryDocuments` | object[] | Persistent context documents |
-| `codeSnippetIds` | string[] | Code snippets available to the agent |
+| `codeSnippetIds` | string[] | Ids of the [code snippets](code-snippets.md) the agent can call as tools |
 | `subagentsIds` | string[] | Other agents this agent can invoke |
 | `contextManagement` | object | Context depth control: `{ fullContextTurnDepth?: number, alwaysIncludeUserMessages?: boolean }` — send only the most recent N turns in full and summarize older ones. See [Context Depth](#context-depth) |
 
@@ -282,6 +282,10 @@ Agents access tools through the `availableToolsGroupsUids` property:
 4. Use `enabledTools` to restrict to a specific subset: it is an allowlist of
    tool names across all the assigned groups, where `null` (or absent) enables
    every tool of those groups and `[]` enables none
+5. Code snippets are attached apart, by id, in
+   `assistantSpecialization.codeSnippetIds`. `enabledTools` filters them too:
+   when the agent has a list, add each snippet's `toolName` to it or runs leave
+   the snippet out. See [code-snippets.md](code-snippets.md#attaching-a-snippet)
 
 **Example**: An agent with `availableToolsGroupsUids: ["crm-tools", "email-tools"]` can use all tools from both the CRM and Email tool groups during execution.
 
@@ -427,10 +431,10 @@ POST /api/v1/agents
 |-------|------|-------------|
 | `presets` | string | System prompt / instructions |
 | `availableToolsGroupsUids` | string[] | Tool group IDs the agent can use |
-| `enabledTools` | string[] \| null | Explicit subset of enabled tool names. `null` enables every tool of the assigned groups, `[]` enables none |
+| `enabledTools` | string[] \| null | Explicit subset of enabled tool names, attached code snippets included (by their `toolName`). `null` enables every tool, `[]` enables none |
 | `model` | string | Default model |
 | `provider` | string | Default LLM provider |
-| `codeSnippetIds` | string[] | Code snippets available to the agent |
+| `codeSnippetIds` | string[] | Ids of the [code snippets](code-snippets.md) the agent can call as tools |
 | `subagentsIds` | string[] | Other agents this agent can invoke |
 | `contextManagement` | object | Context depth control: `{ fullContextTurnDepth?: number, alwaysIncludeUserMessages?: boolean }`. See [Context Depth](#context-depth) |
 

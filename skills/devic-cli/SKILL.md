@@ -1,6 +1,6 @@
 ---
 name: devic-cli
-description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, building agent workflows that interact with assistants, agents, tool servers, documents and feedback, scheduling agents to run themselves (cron, time of day, every N days), managing environments and provisioning or testing sandboxes and snapshots, or creating, browsing and installing Devic skills (including into local coding agents: claude-code, codex, cursor, opencode, cline)."
+description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, building agent workflows that interact with assistants, agents, tool servers, code snippets, documents and feedback, scheduling agents to run themselves (cron, time of day, every N days), managing environments and provisioning or testing sandboxes and snapshots, or creating, browsing and installing Devic skills (including into local coding agents: claude-code, codex, cursor, opencode, cline)."
 ---
 
 # @devicai/cli
@@ -273,7 +273,7 @@ devic agents create [--name <name>] [--description <desc>] [--from-json <file>]
                     [--environment <environment>]
 ```
 
-The `--from-json` payload supports all agent fields: `name`, `description`, `assistantSpecialization` (with `presets`, `availableToolsGroupsUids`, `enabledTools`, `model`, `provider`, `subagentsIds`, `contextManagement`), `provider`, `llm`, `maxExecutionInputTokens`, `maxExecutionToolCalls`, `evaluationConfig`, `subAgentConfig`, `periodicExecution`, `sandboxPreprovision`, `environmentId`.
+The `--from-json` payload supports all agent fields: `name`, `description`, `assistantSpecialization` (with `presets`, `availableToolsGroupsUids`, `enabledTools`, `codeSnippetIds`, `model`, `provider`, `subagentsIds`, `contextManagement`), `provider`, `llm`, `maxExecutionInputTokens`, `maxExecutionToolCalls`, `evaluationConfig`, `subAgentConfig`, `periodicExecution`, `sandboxPreprovision`, `environmentId`.
 
 #### devic agents update
 
@@ -890,6 +890,64 @@ For the provisioning workflow (install once, bake, then leave it alone), the
 snapshot modes, per-tenant snapshots, the `SESSION_ACTIVE` and
 `SNAPSHOT_SAVE_IN_PROGRESS` conflicts and cleanup, see
 [environments-and-sandboxes.md](environments-and-sandboxes.md).
+
+---
+
+### devic snippets
+
+Code snippets: functions written once and given to agents and assistants as
+tools. Alias: `devic code-snippets`. Each defines `main(input)`; `parameters`
+is the JSON Schema of `input`, and the model calls it by its `toolName`. The
+full contract (how the code runs, versions, validation) is in the devic-api
+skill, `code-snippets.md`.
+
+```bash
+devic snippets list   [--search <text>] [--language <lang>] [--enabled | --disabled]
+                      [--tag <tag>] [--project <id>] [--limit <n>] [--offset <n>]
+devic snippets get    <id> [--code-only]
+devic snippets create --name <snake_case> --description <text>
+                      (--code-file <file> | --code <source>) --parameters <json|file>
+                      [--language <lang>] [--tags <a,b>] [--project <id>] [--disabled]
+                      [--from-json <file>]
+devic snippets update <id> [--name ...] [--description ...] [--code-file ... | --code ...]
+                      [--parameters <json|file>] [--language <lang>] [--tags <a,b>]
+                      [--enabled | --disabled] [--test-cases <json|file>]
+                      [--expected-version <n>] [--from-json <file>]
+devic snippets delete <id>
+devic snippets test   <id> [--input <json|file>]... [--inputs-file <file>] [--timeout <ms>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--code-file <file>` | Source defining `main(input)`; `-` reads stdin. The language is inferred from `.js`, `.mjs`, `.cjs`, `.ts` or `.py` unless `--language` is given |
+| `--parameters <json\|file>` | JSON Schema of `input` (`type: "object"`), inline or a file |
+| `--from-json <file>` | Full payload: `name`, `description`, `language`, `code`, `parameters`, `tags`, `testCases`, `enabled`, `projectId`. Flags override it |
+| `--test-cases <json\|file>` | Replaces the saved test cases: `[{ "name": "...", "input": { ... } }]` |
+| `--expected-version <n>` | Refuse with 409 when the snippet is no longer at version `n` |
+| `--code-only` | `get` prints only the source, to redirect into a file |
+| `--input <json\|file>` | One input object; repeat it for several runs. Without inputs, the saved test cases run |
+
+`update` changes only what you pass. A change to the name, description,
+language, code or parameters saves a new version; `--enabled`/`--disabled`,
+tags and test cases do not.
+
+**`test` exits 1 when any run fails**, so it works as a check in a script. A
+failing run is still printed with its error: an input that does not match
+`parameters` fails before the code runs, with the schema error.
+
+```bash
+# Round trip: edit the code locally and check it before agents get it
+devic snippets get 69cd0438... --code-only > distance.js
+$EDITOR distance.js
+devic snippets update 69cd0438... --code-file distance.js --expected-version 2
+devic snippets test 69cd0438... && echo "ready"
+```
+
+To give a snippet to an agent, add its id to
+`assistantSpecialization.codeSnippetIds` (assistants: top-level
+`codeSnippetIds`) with `--from-json`. **If the entity has an `enabledTools`
+list, add the snippet's `toolName` to it too** (for example with
+`--enabled-tools` on assistants), or runs leave the snippet out.
 
 ---
 

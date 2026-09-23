@@ -40,7 +40,7 @@ Assistant Specializations define how an assistant behaves, what tools it can use
 | `description` | string | Description of the assistant's purpose |
 | `presets` | string | System prompt / instructions. Writable on create and update; **readable only with `?includePresets=true`** — see [Reading the System Prompt](#reading-the-system-prompt) |
 | `availableToolsGroupsUids` | string[] | Tool group IDs the assistant can use |
-| `enabledTools` | string[] \| null | Explicit subset of enabled tool names. `null` enables every tool of the assigned groups, `[]` enables none |
+| `enabledTools` | string[] \| null | Explicit subset of enabled tool names, attached code snippets included (by their `toolName`). `null` enables every tool, `[]` enables none |
 | `model` | string | Default LLM model |
 | `provider` | string | Default LLM provider |
 | `memoryDocuments` | object[] | Persistent context documents |
@@ -58,6 +58,10 @@ Assistants access tools through `availableToolsGroupsUids`:
 4. Use `enabledTools` to restrict access to specific tools. It is an allowlist of
    tool names across all the assigned groups: `null` (or absent) enables every
    tool of those groups, `[]` enables none
+5. Code snippets are attached apart, by id, in `codeSnippetIds`. `enabledTools`
+   filters them too: when the assistant has a list, add each snippet's
+   `toolName` to it or runs leave the snippet out. See
+   [code-snippets.md](code-snippets.md#attaching-a-snippet)
 
 ### Access Configuration
 
@@ -279,13 +283,13 @@ POST /api/v1/assistants
 | `imgUrl` | string | No | Image URL for the assistant |
 | `state` | string | No | State: `active`, `inactive`, or `coming_soon` |
 | `availableToolsGroupsUids` | string[] | No | Tool group UIDs the assistant can use |
-| `enabledTools` | string[] \| null | No | Explicit subset of enabled tool names. Defaults to every tool of the assigned groups |
+| `enabledTools` | string[] \| null | No | Explicit subset of enabled tool names, attached code snippets included (by their `toolName`). Defaults to every tool |
 | `accessConfiguration` | object | No | `{ externalAccess?: boolean, visibilityByRole?: string[] }` |
 | `widgetConfiguration` | object | No | `{ enabled?: boolean, sourcesWhiteList?: string[], color?: string, welcomeMessage?: string }` |
 | `memoryDocuments` | object[] | No | RAG memory documents `[{ genericDocument?, name?, summary? }]` |
 | `structuredOutput` | object | No | JSON schema configuration for structured output |
 | `guardrailsConfiguration` | object | No | `{ enabled?: boolean, guardrails?: any }` |
-| `codeSnippetIds` | string[] | No | Code snippet IDs available to the assistant |
+| `codeSnippetIds` | string[] | No | Ids of the [code snippets](code-snippets.md) the assistant can call as tools |
 | `availableSkillIds` | string[] | No | Skill IDs the assistant can use |
 | `subagentsIds` | string[] | No | Subagent IDs the assistant can invoke |
 | `maxChatMessages` | number | No | Maximum chat messages to include in context |
