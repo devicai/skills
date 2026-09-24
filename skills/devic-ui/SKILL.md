@@ -1,6 +1,6 @@
 ---
 name: devic-ui
-description: Integrate Devic assistants and agents in React with @devicai/ui. Covers chat streaming, asynchronous subagents, timed pause/resume, scoped cancellation, pinning messages of a long conversation, tenant sessions, connected apps, translations, guardrails, and custom UI hooks.
+description: Integrate Devic assistants and agents in React with @devicai/ui. Covers chat streaming, asynchronous subagents, timed pause/resume, scoped cancellation, pinning messages of a long conversation, tenant sessions, connected apps, translations, guardrails, and custom UI hooks, and file attachments (accepted formats, extra extensions).
 ---
 
 # Devic UI Integration Guide
@@ -833,13 +833,45 @@ Enable file attachments in chat. Files are uploaded to the Devic API (`POST /api
     allowedFileTypes: {
       images: true,
       documents: true,
+      spreadsheets: true, // off by default
       audio: false,
       video: false,
     },
+    additionalFileTypes: ['.dwg', 'application/zip'], // extra formats on demand
     maxFileSize: 10 * 1024 * 1024, // 10MB
   }}
 />
 ```
+
+### Which files are accepted
+
+Each `allowedFileTypes` flag turns on a family, and a file passes on its **MIME type or its extension** (the extension matters: the browser takes `File.type` from the OS, which often reports none — a `.docx` on a computer without Office, a `.json` on Windows):
+
+| Flag | Formats |
+|------|---------|
+| `images` | jpeg, png, gif, webp |
+| `documents` | pdf, doc, docx, odt, rtf, txt, csv, json |
+| `spreadsheets` (off by default) | xlsx, xls, xlsm, ods, csv |
+| `audio` | mpeg (mp3), wav, ogg |
+| `video` | mp4, webm, ogg |
+
+The same rules apply to the attach button, drag & drop and paste. A refused file is reported above the input (wrong type, or larger than `maxFileSize`) instead of disappearing; the two texts are translatable (`"{name}" cannot be attached: this file type is not allowed.` and `"{name}" is larger than {size} MB and cannot be attached.`).
+
+### Extra formats: `additionalFileTypes`
+
+For formats no family covers (CAD drawings, archives, 3D models…), list them in `additionalFileTypes`. Each entry is an **extension**, with or without its dot (`'.dwg'`, `'dxf'`), or a **MIME type**, wildcards included (`'application/zip'`, `'model/*'`). They add to the enabled families; with every family off, only these are accepted. `maxFileSize` still applies. `ChatInput` used on its own takes the same prop.
+
+```tsx
+options={{
+  enableFileUploads: true,
+  allowedFileTypes: { images: true, documents: true },
+  additionalFileTypes: ['.dwg', 'dxf', 'application/zip', 'model/*'],
+}}
+```
+
+Accepting a format in the composer does not mean the assistant can read it: with the default upload the file reaches Devic as a download URL, and the assistant needs a tool (sandbox, OCR…) that understands it.
+
+A `customPromptBox` receives the same rules as `fileAccept` and `checkFile` (see [Custom prompt box](#custom-prompt-box) below).
 
 ### Custom File Upload Handler
 
@@ -1122,6 +1154,24 @@ The `CustomPromptBoxProps` interface:
 | `references` | `AIReference[]` | Active references created by AIElementWrapper components |
 | `removeReference` | `(id: string) => void` | Remove a single reference by id |
 | `clearReferences` | `() => void` | Clear all references |
+| `fileAccept` | `string` | The drawer's file rules (`allowedFileTypes` + `additionalFileTypes`) as a value for the `accept` attribute of your `<input type="file">` |
+| `checkFile` | `(file: File) => 'size' \| 'type' \| null` | Checks a file against the same rules as the default composer, `maxFileSize` included: `null` when it can be attached |
+
+A custom prompt box with attachments should use both, so it accepts exactly what the default composer would:
+
+```tsx
+customPromptBox: ({ sendMessage, fileAccept, checkFile }) => (
+  <input
+    type="file"
+    multiple
+    accept={fileAccept}
+    onChange={(e) => {
+      const files = Array.from(e.target.files || []).filter((f) => checkFile(f) === null);
+      if (files.length) sendMessage('', files);
+    }}
+  />
+)
+```
 
 ### Custom Send Button
 
@@ -1875,7 +1925,8 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `showSubagentActivity` | `boolean` | `true` | Show the compact, closable async-subagent tray above the prompt |
 | `pauseWidgetRenderer` | `(props: AssistantPauseWidgetProps) => ReactNode` | — | Replace the timed-pause card. Props include the deadline/reason, request state/error and the working `resumeNow()` action |
 | `enableFileUploads` | `boolean` | `false` | Enable file attachments |
-| `allowedFileTypes` | `AllowedFileTypes` | — | Filter by file type (images, documents, audio, video) |
+| `allowedFileTypes` | `AllowedFileTypes` | `{ images: true, documents: true }` | Families of accepted files (images, documents, spreadsheets, audio, video), matched by MIME type or extension |
+| `additionalFileTypes` | `string[]` | `[]` | Extra extensions (`'.dwg'`, `'dxf'`) or MIME types (`'application/zip'`, `'model/*'`) to accept on top of the families. Also handed to a `customPromptBox` as `fileAccept`/`checkFile` |
 | `maxFileSize` | `number` | `10485760` | Max file size in bytes (10MB) |
 | `enableSpeechToText` | `boolean` | `false` | Show a microphone in the prompt box for voice input via `/whisper`. See [speech-to-text.md](speech-to-text.md) |
 | `speechLanguage` | `string` | — | ISO-639-1 language hint for speech-to-text (e.g. `'es'`, `'en'`) |
@@ -1901,7 +1952,7 @@ const handleGenerationResult = (result: GenerationResult) => {
 | `showFeedback` | `boolean` | `true` | Show thumbs up/down feedback buttons on assistant messages |
 | `handoffWidgetRenderer` | `(props: { thread, agent, elapsedSeconds, isTerminal }) => ReactNode` | — | Custom renderer for the HandoffSubagentWidget (replaces default UI) |
 | `toolGroups` | `ToolGroupConfig[]` | — | Group consecutive tool calls under a single renderer |
-| `customPromptBox` | `(props: CustomPromptBoxProps) => ReactNode` | — | Replace the default input area with a custom component. Receives `sendMessage`, `transcribeAudio`, `stop`, `isLoading`, `newConversation` and reference helpers |
+| `customPromptBox` | `(props: CustomPromptBoxProps) => ReactNode` | — | Replace the default input area with a custom component. Receives `sendMessage`, `transcribeAudio`, `stop`, `isLoading`, `newConversation`, reference helpers and the file rules (`fileAccept`, `checkFile`) |
 | `userMessageRenderer` | `MessageBubbleRenderer` | — | Replace the built-in markdown renderer for **user** message bubbles. Receives `{ message, content, role, references, pinned }` |
 | `assistantMessageRenderer` | `MessageBubbleRenderer` | — | Replace the built-in markdown renderer for **assistant** message bubbles. Receives `{ message, content, role, references, pinned }` |
 | `showPinnedMessages` | `boolean` | `true` | Pin buttons on messages and the pinned-messages bar. See [Pinned Messages](#pinned-messages) |
