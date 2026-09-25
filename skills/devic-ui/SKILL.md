@@ -1556,6 +1556,41 @@ Texts to translate: `Pin message`, `Unpin message`, `Pinned message`,
 `{count} pinned messages`, `Go to pinned message`, `Scroll to the latest message`,
 `You`, `Assistant`, `Image`, `Attachment`, `Message`.
 
+## Conversation message limit
+
+When the assistant reaches its configured maximum number of chat messages, the
+API returns `stopReason: 'max_chat_messages_reached'`. `ChatDrawer` displays a
+notice with a button to start another conversation and disables its composer.
+It also shows the notice when a limited conversation is reopened. This is a
+conversation cap, separate from a tenant usage limit (`limitExceeded`).
+
+The default notice uses the usual `translations` dictionary:
+
+```tsx
+translations={{
+  'Message limit reached for this chat': 'Límite de mensajes alcanzado',
+  'This conversation has reached its message limit. Start a new chat to continue.':
+    'Esta conversación ha alcanzado su límite. Abre otra para continuar.',
+  'Start a new chat': 'Abrir nueva conversación',
+}}
+```
+
+To replace the notice with a React component, pass
+`options.messageLimitRenderer`. Its `onNewChat` action starts a new
+conversation and clears a persisted conversation selection when enabled:
+
+```tsx
+<ChatDrawer assistantId="my-assistant" options={{
+  messageLimitRenderer: ({ onNewChat }) => (
+    <MyLimitNotice onNewChat={onNewChat} />
+  ),
+}} />
+```
+
+Custom prompt boxes receive `messageLimitReached` so they can disable their
+own input. Custom chat interfaces can read `useDevicChat().stopReason`.
+`MessageLimitNotice` and its props are exported for direct use.
+
 ## Controlled Mode
 
 Control the drawer state externally:
