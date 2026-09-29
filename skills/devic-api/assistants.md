@@ -765,7 +765,7 @@ GET /api/v1/assistants/:identifier/chats/:chatUid/realtime
 |--------|-------------|
 | `buffering` | Messages are being collected before processing (see [Message Buffering](#message-buffering-input-delay)) |
 | `processing` | Message is currently being processed by the assistant. The response then also carries `streamingMessage`: the assistant's partial reply so far (`{ role: "assistant", content: { message } }`), when the model is one that streams (OpenAI, Anthropic, Gemini) and the assistant has no guardrails enabled |
-| `waiting_for_tool_response` | The model called a client-side tool; submit its result with `POST …/chats/:chatUid/tool-response` (Model Interface Protocol) |
+| `waiting_for_tool_response` | The model called a client-side tool; submit its result with `POST …/chats/:chatUid/tool-response` (Model Interface Protocol). The conversation keeps waiting until it is answered: after the live state expires (about an hour), the endpoint rebuilds it from the stored conversation and still reports this status while the last assistant message has unanswered calls (with `pendingAsyncToolCalls` for the ones an external system answers), and a late `tool-response` that answers one of them resumes the turn |
 | `handed_off` | The assistant delegated to a subagent; `handedOffSubThreadId` names the thread to watch |
 | `limit_exceeded` | A tenant usage limit blocked the message; see `limitExceeded` |
 | `completed` | Processing finished successfully |
@@ -839,7 +839,7 @@ data: {"chatUID":"550e8400-…","status":"processing","chatHistory":[…],"strea
 ```
 
 - `data` is exactly the `data` object the realtime endpoint returns (same fields, same status values). Frames are only sent when something changed; the first one arrives right away with the current state.
-- Comment frames (`: keep-alive`) arrive every 15 s of silence so proxies keep the connection and you can tell quiet from dead. Ignore them.
+- Comment frames arrive too: `: keep-alive` after 5 s of silence, so proxies keep the connection and you can tell quiet from dead, and `: flush` a few milliseconds after each burst of frames, so browsers that hold back the end of a streamed response until more bytes arrive (Safari, every iOS browser) hand the frame over at once. Ignore both.
 - The server **closes the connection** when the status is terminal (`completed`, `error`, `limit_exceeded`) with nothing queued, or after **60 seconds** in any case. If the last snapshot is not terminal, open it again; nothing is lost because every frame is the full state.
 - `event: reconnect` (empty data) is sent before closing when the server hit an error: open it again.
 - Reads only: opening the stream never runs the model. Send messages with `POST …/messages?async=true` first.

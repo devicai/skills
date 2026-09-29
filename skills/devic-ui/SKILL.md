@@ -654,8 +654,16 @@ What changes when it is on:
 - **Drops heal on their own.** The server closes each connection after
   60 seconds and the client reopens it (250 ms later); the poll covers the
   gap. A connection that goes silent for 30 seconds is dropped and reopened;
-  the server sends a `: keep-alive` comment every 15 seconds so a quiet
+  the server sends a `: keep-alive` comment every 5 seconds so a quiet
   model turn is not mistaken for a dead socket.
+- **Safari does not delay client-side tools (0.66.1).** WebKit (Safari, every
+  iOS browser) can hold the end of a streamed response until more bytes
+  arrive, which used to delay the `waiting_for_tool_response` frame, and the
+  tool with it, until the next keep-alive. The server now follows each burst of
+  frames with a short comment, and the library reads `/realtime` once, keeping
+  the stream open, when a frame stays half-received for 1 s or when the stream
+  goes quiet on a call to one of its own tools. Upgrade to 0.66.1 if your users
+  are on Safari.
 - Everything else is unchanged: message queueing, client-side tools
   (`waiting_for_tool_response`), handoffs, usage limits and guardrail
   notices all arrive through the same snapshots.
