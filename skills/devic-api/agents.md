@@ -219,6 +219,7 @@ The `assistantSpecialization` defines the agent's behavior, tools, and capabilit
 | `availableToolsGroupsUids` | string[] | Tool group IDs the agent can use |
 | `enabledTools` | string[] \| null | Explicit subset of enabled tool names, attached code snippets included (by their `toolName`). `null` enables every tool, `[]` enables none |
 | `model` | string | Default model |
+| `reasoningEffort` | string \| null | Assistant specialization default; choose from the model catalog. See [reasoning effort](conversation-options.md#select-the-scope). |
 | `provider` | string | Default LLM provider |
 | `memoryDocuments` | object[] | Persistent context documents |
 | `codeSnippetIds` | string[] | Ids of the [code snippets](code-snippets.md) the agent can call as tools |
@@ -433,6 +434,7 @@ POST /api/v1/agents
 | `availableToolsGroupsUids` | string[] | Tool group IDs the agent can use |
 | `enabledTools` | string[] \| null | Explicit subset of enabled tool names, attached code snippets included (by their `toolName`). `null` enables every tool, `[]` enables none |
 | `model` | string | Default model |
+| `reasoningEffort` | string \| null | Assistant specialization default; choose from the model catalog. See [reasoning effort](conversation-options.md#select-the-scope). |
 | `provider` | string | Default LLM provider |
 | `codeSnippetIds` | string[] | Ids of the [code snippets](code-snippets.md) the agent can call as tools |
 | `subagentsIds` | string[] | Other agents this agent can invoke |

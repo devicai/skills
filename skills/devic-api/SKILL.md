@@ -153,6 +153,13 @@ To give an agent access to a custom CRM API:
 3. **Update the Agent's assistantSpecialization** to include the tools group UID in `availableToolsGroupsUids`
 4. The agent can now call CRM tools during execution
 
+## Conversation names and reasoning
+
+For `chatName`, assistant/conversation/message `reasoningEffort`, resets and
+model-compatible levels from `GET /api/v1/models`, read
+[conversation-options.md](conversation-options.md). Keep conversation naming
+separate from the assistant's own `name`.
+
 ## API Sections
 
 The Devic API is organized into three main sections:

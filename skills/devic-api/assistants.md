@@ -279,6 +279,7 @@ POST /api/v1/assistants
 | `description` | string | No | Description of the assistant's purpose |
 | `presets` | string | No | System prompt / instructions |
 | `model` | string | No | Default LLM model |
+| `reasoningEffort` | string \| null | No | Saved assistant effort. Null clears it; choose a model-supported level. See [conversation options](conversation-options.md). |
 | `provider` | string | No | Default LLM provider |
 | `imgUrl` | string | No | Image URL for the assistant |
 | `state` | string | No | State: `active`, `inactive`, or `coming_soon` |
@@ -443,6 +444,9 @@ POST /api/v1/assistants/:identifier/messages
 |-------|------|----------|-------------|
 | `message` | string | Yes | The message to send to the assistant |
 | `chatUid` | string | No | Chat conversation ID (for continuing conversations) |
+| `chatName` | string | No | Initial conversation name; ignored for existing chats. Blank/omitted uses automatic naming. |
+| `reasoningEffort` | string \| null | No | Effort for this turn; null/omission inherits defaults. |
+| `conversationReasoningEffort` | string \| null | No | Save the conversation default; null restores assistant inheritance. |
 | `provider` | string | No | Override the LLM provider (e.g., "openai", "anthropic") |
 | `model` | string | No | Override the model (e.g., "gpt-4", "claude-3-opus") |
 | `tags` | string[] | No | Tags to associate with this chat |
@@ -487,6 +491,14 @@ The assistant answers with the system prompt already personalized: "You are a su
 - The misspelled legacy key `propmptTemplateParams` is also accepted for backward compatibility (and takes precedence when both are present). Use the correct spelling `promptTemplateParams` in new integrations.
 - This keeps a single assistant specialization reusable across customers/users: the per-conversation context travels in the message metadata instead of requiring one specialization per customer.
 - The same mechanism is available for agent threads — see [agents.md](agents.md#prompt-template-parameters).
+
+### Conversation options
+
+Read [conversation-options.md](conversation-options.md) for naming, effort
+precedence, model discovery, JSON null versus explicit `none`, and response
+metadata. Both sync and async modes accept these options. Conversation names
+are only assigned on creation; the message request field is `chatName`, while
+history returns `name`.
 
 ### Synchronous Mode (Default)
 
