@@ -96,6 +96,17 @@ All list commands support:
 
 ## Commands Reference
 
+### devic models list
+
+```bash
+devic models list [--provider <provider>] [--model <model>]
+```
+
+Lists current model capabilities through `GET /api/v1/models`. Filters match
+exact identifiers (for example `open-ai`). Choose effort from the selected
+model's `reasoningEfforts`, not the provider union. See
+[conversation-options.md](conversation-options.md) for examples.
+
 ### devic assistants
 
 Manage assistants and chat conversations.
@@ -125,23 +136,24 @@ devic assistants get <identifier>
 Create a new assistant.
 
 ```bash
-devic assistants create [--name <name>] [--description <desc>] [--from-json <file>]
+devic assistants create [--name <name>] [--description <desc>] [--reasoning-effort <level>] [--from-json <file>]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--name <name>` | Assistant name |
 | `--description <desc>` | Assistant description |
+| `--reasoning-effort <level>` | Saved assistant effort; `default`/`null` clears it. Model support varies. |
 | `--from-json <file>` | Read full assistant config from JSON file (- for stdin) |
 
-The `--from-json` payload supports all assistant specialization fields: `name`, `description`, `presets`, `model`, `provider`, `imgUrl`, `state`, `availableToolsGroupsUids`, `enabledTools`, `accessConfiguration`, `widgetConfiguration`, `memoryDocuments`, `structuredOutput`, `guardrailsConfiguration`, `codeSnippetIds`, `availableSkillIds`, `subagentsIds`, `maxChatMessages`, `maxToolResponseInputTokens`, `contextManagement` (`{ fullContextTurnDepth?: number, alwaysIncludeUserMessages?: boolean }` — send only the most recent N turns in full and summarize older ones).
+The `--from-json` payload supports all assistant specialization fields: `name`, `description`, `presets`, `model`, `provider`, `reasoningEffort`, `imgUrl`, `state`, `availableToolsGroupsUids`, `enabledTools`, `accessConfiguration`, `widgetConfiguration`, `memoryDocuments`, `structuredOutput`, `guardrailsConfiguration`, `codeSnippetIds`, `availableSkillIds`, `subagentsIds`, `maxChatMessages`, `maxToolResponseInputTokens`, `contextManagement` (`{ fullContextTurnDepth?: number, alwaysIncludeUserMessages?: boolean }` — send only the most recent N turns in full and summarize older ones).
 
 #### devic assistants update
 
 Update an existing assistant (partial updates supported).
 
 ```bash
-devic assistants update <identifier> [--name <name>] [--description <desc>] [--enabled-tools <a,b,c>] [--all-tools] [--from-json <file>]
+devic assistants update <identifier> [--name <name>] [--description <desc>] [--reasoning-effort <level>] [--enabled-tools <a,b,c>] [--all-tools] [--from-json <file>]
 ```
 
 Same options as `create`, plus the tool selection flags below. Only provided fields will be updated.
@@ -176,14 +188,23 @@ devic assistants chat <identifier> -m "message" [options]
 
 | Option | Description |
 |--------|-------------|
-| `-m, --message <text>` | **Required.** Message to send |
+| `-m, --message <text>` | Message to send; may instead be supplied in `--from-json`. |
 | `--chat-uid <uid>` | Continue an existing conversation |
-| `--provider <provider>` | LLM provider override (openai, anthropic, azure, google) |
+| `--chat-name <name>` | Initial name for a new conversation; existing names are preserved. |
+| `--reasoning-effort <level>` | Override effort for this user turn only. |
+| `--conversation-reasoning-effort <level>` | Save the conversation default; `default`/`null` restores assistant inheritance. |
+| `--provider <provider>` | LLM provider override; use an identifier from `devic models list`, such as `open-ai`. |
 | `--model <model>` | Model override |
 | `--tags <tags>` | Comma-separated tags |
 | `--wait` | Async mode + poll for result (default: true) |
 | `--no-wait` | Synchronous mode — blocks until response |
+| `--detach` | Send asynchronously and return chatUid without polling. |
 | `--from-json <file>` | Read full ProcessMessageDto from file (- for stdin) |
+
+For naming, JSON/flag precedence, effort inheritance and resets, read
+[conversation-options.md](conversation-options.md). `--chat-name` requires CLI
+0.26.0+, effort flags/model discovery 0.27.0+. Check the installed version and
+help; source merges do not guarantee a release is already published.
 
 When `--wait` is active, status updates are emitted during polling:
 

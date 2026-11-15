@@ -87,6 +87,36 @@ await acme.assistants.chat('support-bot', {
 Anything not wrapped yet is reachable on `devic.client`, the HTTP client
 underneath.
 
+## Conversation name and reasoning parameters
+
+The assistant message API accepts `chatName` for a new conversation, not `name`.
+The SDK declares it in `ProcessMessageDto` from 0.2.0:
+
+```ts
+await devic.assistants.chat('support-bot', {
+  message: 'Review this proposal',
+  chatName: 'Proposal review',
+});
+```
+
+It works with `chat` and `chatAsync`. Existing conversations keep their name;
+blank/omitted names use automatic naming. History returns the saved `name`.
+
+The public API also accepts `reasoningEffort` (this turn) and
+`conversationReasoningEffort` (persisted chat default). Assistant create/update
+accepts `reasoningEffort`. Precedence is message → conversation → assistant →
+adapter default. JSON null restores inheritance; `none` is an explicit model
+level. Discover supported levels with `GET /api/v1/models`, using each model's
+`reasoningEfforts`, not the provider union.
+
+Check the installed SDK declarations before using new fields. The 0.2.0
+`ProcessMessageDto` declares `chatName` but not the effort fields. Do not claim
+that a source merge or API change updated a published npm package. If a needed
+field is missing from the installed SDK, use the documented public HTTP API
+from the server, preserving the caller's tenant/subtenant scope, rather than
+inventing SDK methods or disabling TypeScript checks. See the
+[API examples](https://docs.devic.ai/devic/assistants/reasoning-effort).
+
 ## Tenant sessions — the main reason to install this
 
 Your page needs a credential. Sending it your API key makes the tenant a claim:
