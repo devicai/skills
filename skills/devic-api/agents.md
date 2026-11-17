@@ -835,8 +835,21 @@ POST /api/v1/agents/threads/:threadId/approval
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `approved` | boolean | Yes | Whether to approve or reject |
-| `message` | string | No | Optional message or feedback |
+| `action` | string | Yes | `"approved"` or `"rejected"`. Any other value, including a missing field, is treated as a rejection |
+| `message` | string | No | Your answer. The agent receives it as `User responded: <message>`. On a rejection it is also stored as `approvalRejectedMessage` |
+| `retry` | boolean | No | Only with `"rejected"`: instead of ending the thread, the agent continues and reads your message, so it can try another way |
+
+What happens next:
+
+| Body | Thread state |
+|------|--------------|
+| `action: "approved"` | `QUEUED`. The agent resumes |
+| `action: "rejected"`, `retry: true` | `QUEUED`. The agent resumes with your message as feedback |
+| `action: "rejected"` | `APPROVAL_REJECTED`. The thread ends |
+
+The thread must be in `PAUSED_FOR_APPROVAL`.
+
+> There is no `approved: true` field. A body such as `{ "approved": true }` has no `action` and **rejects** the request.
 
 ### Example Request
 
@@ -845,8 +858,18 @@ curl -X POST "https://api.devic.ai/api/v1/agents/threads/thread-456/approval" \
   -H "Authorization: Bearer devic-your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "approved": true,
+    "action": "approved",
     "message": "Proceed with the data export"
+  }'
+
+# Reject, but let the agent try another way
+curl -X POST "https://api.devic.ai/api/v1/agents/threads/thread-456/approval" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "rejected",
+    "retry": true,
+    "message": "Do not export customer emails; export only the totals"
   }'
 ```
 
