@@ -242,7 +242,7 @@ Settings use the same bodies as the app.
 - **Settings:** `PATCH /{wid}` with `{ name, description, logoUrl, visibility, assistantIds, intervention, archived, integrationPermissions, experimentalFeatures, revision }`.
 - **Members:** `PUT /{wid}/members/{userUID}` with `{ role: "owner" | "manager" | "member" | "viewer", revision? }`. `DELETE` removes the member.
 - **Assistants:** `POST /{wid}/assistants` and `PATCH /{wid}/assistants/{aid}` take the assistant's configuration (name, model, instructions, tools, `knowledgeSkills`, …). `DELETE` takes `?revision=` for a safe removal.
-- **Resources:** `PUT /{wid}/resources` with `{ knowledgeSkills?, knowledge?, environment?, revision? }`. Find candidates with `GET /{wid}/skills/catalog` and `GET /{wid}/knowledge/catalog`. Create or edit a skill's content with the Skills API (`/api/v1/skills`), then attach it here.
+- **Resources:** `PUT /{wid}/resources` with `{ knowledgeSkills?, knowledge?, environment?, revision? }`. Find candidates with `GET /{wid}/skills/catalog` and `GET /{wid}/knowledge/catalog`. Create or edit a skill's content with the Documents API (`POST /api/v1/documents/skills/scaffold`, `PATCH /api/v1/documents/{id}`; see `documents.md`), then attach it here.
 - **Rules:** `PUT /{wid}/rules` (or `/{wid}/threads/{tid}/rules`) with `{ content, expectedRevision }`. A stale `expectedRevision` returns `409`.
 
 ## Core memory
