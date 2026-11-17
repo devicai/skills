@@ -3,6 +3,8 @@
 `devic workspaces` (alias `ws`) drives Workspaces from the command line: shared
 spaces where people and assistants work together in threads. It wraps the public
 API under `/api/v1/workspaces` (contract in the devic-api skill, `workspaces.md`).
+For task-oriented guidance (who to act as, finding unread work, answering and
+approving), see the `devic-workspaces` skill.
 
 Ids are positional and always in the order **workspace → thread → invocation /
 file**: `<wid> <tid> ...`.
@@ -124,8 +126,19 @@ devic ws answer <wid> <tid> <rid> --answers '[{"id":"q1","selected":["eur"]},{"i
 devic ws answer <wid> <tid> <rid> --skip
 ```
 
-Pass `--revision` and `--input-id` to skip the lookup. Any other invocation
-action (`cancel`, `retry`, `approve`, ...) goes through
+Pass `--revision` and `--input-id` to skip the lookup.
+
+## Approving tool calls
+
+When a run is `waiting_approval` (for example before using the terminal),
+`approve` fills `revision` and `actionId` (`requestedAction.id`) the same way:
+
+```bash
+devic ws approve <wid> <tid> <rid>            # --always: allow that tool from now on
+```
+
+Pass `--revision` and `--action-id` to skip the lookup. Any other invocation
+action (`cancel`, `retry`, ...) goes through
 `run-action <wid> <tid> <rid> <action> [--data]`.
 
 ## Files

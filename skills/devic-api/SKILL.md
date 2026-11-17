@@ -348,7 +348,7 @@ Shared spaces where people and assistants work in threads.
 
 **Base path:** `/api/v1/workspaces`
 
-For detailed documentation, see [workspaces.md](workspaces.md).
+For detailed documentation, see [workspaces.md](workspaces.md). For task recipes (identity, unread inbox, answering and approving runs, CLI equivalents) see the standalone `devic-workspaces` skill.
 
 ## Pagination
 

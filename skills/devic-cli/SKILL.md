@@ -1004,6 +1004,7 @@ Also: `create`/`update`, `members set|remove`, `assistants`, `resources`,
 `--thread`; `expectedRevision` filled in) and `automations` (incl. `runs`).
 Full command tree, revision handling and examples:
 [workspaces.md](workspaces.md).
+See also the standalone `devic-workspaces` skill for task recipes.
 
 ---
 
