@@ -214,7 +214,10 @@ POST /api/v1/workspaces/{wid}/threads/{tid}/invocations/{runId}/answer
 
 To skip the questions, send `{ "revision": 63, "inputId": "call_…", "skipped": true }`.
 
-Other actions use the same route with their own name: `approve`, `cancel` and `retry`.
+Other actions use the same route with their own name, such as `cancel` and `retry`.
+
+To approve a tool call, send `approve` when the run is `waiting_approval`. The body needs the run's `revision` and `requestedAction.id`:
+`{ "revision": 14, "actionId": "call_…", "always": false }`. Set `always: true` to also allow this tool from now on, if the run permits it.
 
 ## Read state
 

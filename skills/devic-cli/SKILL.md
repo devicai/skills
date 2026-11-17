@@ -988,6 +988,7 @@ devic ws threads get <wid> <tid> -o human         # transcript + pending questio
 devic ws threads messages <wid> <tid> --after 41  # newer than seq 41
 devic ws send <wid> <tid> "Draft the reply" --assistant <aid> --wait
 devic ws answer <wid> <tid> <invocationId> --answers '[{"id":"q1","selected":["eur"]}]'
+devic ws approve <wid> <tid> <invocationId>   # approve a tool call the run is waiting on
 devic ws threads read <wid> <tid>
 devic ws files download <wid> <tid> <fileId> --out ./downloads/   # never overwrites without --force
 ```

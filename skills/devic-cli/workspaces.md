@@ -49,6 +49,7 @@ devic ws send <wid> <tid> <text|-> [--assistant <aid>] [--mention kind:id[:label
                                    [--reply-to <mid>] [--client-id <id>]
                                    [--wait [--timeout <s>] [--poll-interval <s>]]
 devic ws answer <wid> <tid> <invocationId> (--answers <json|file|-> | --skip)
+devic ws approve <wid> <tid> <invocationId> [--always]  # waiting_approval: revision and actionId fetched
 devic ws run-action <wid> <tid> <invocationId> <action> [--data <json|file|->]
 
 devic ws files list <wid> <tid>
