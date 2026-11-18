@@ -81,9 +81,27 @@ devic ws rules get <wid> [--thread <tid>]
 devic ws rules set <wid> [--thread <tid>] (--content <text|-> | --file <path>) [--expected-revision <n>]
 devic ws rules history <wid> [--thread <tid>] [--before <cursor>]
 
-devic ws automations list|get|create|update|delete <wid> ...
-devic ws automations activate|pause|invoke|test <wid> <automationId> [--data]
+devic ws automations list|get|update|delete <wid> ...
+devic ws automations create <wid> [--name] [--source-thread <tid>]       # empty draft
+devic ws automations capabilities <wid>                                   # sources + included model
+devic ws automations destinations <wid>
+devic ws automations destination-assistants <wid> <target>
+devic ws automations find-threads <wid> <target> [--query] [--mode keywords|literal|regex|list] [--search-in titles|messages|all] [--match all|any] [--limit] [--before]
+devic ws automations read-thread <wid> <target> <tid> [--query] [--limit] [--before-seq] [--after-seq]
+devic ws automations connections <wid>
+devic ws automations connection-tools <wid> <connectionId>
+devic ws automations triggers <wid> --integration <app> [--query] [--cursor]
+devic ws automations trigger <wid> <slug>
 devic ws automations schedule-preview <wid> --data <json>
+devic ws automations draft <wid> <automationId> --data <plan|file|-> [--draft-version <n>]   # never activates
+devic ws automations activate <wid> <automationId> (--included | --provider <p> --model <m>) [--draft-version <n>] [--max-input-tokens <n>]
+devic ws automations pause|invoke|test <wid> <automationId> [--data]
+
+devic ws integrations search <wid> <query> [--semantic]
+devic ws connections list <wid>
+devic ws connections connect <wid> <integration> --scope workspace|user [--name] [--auth-scheme]   # prints the authorization link
+devic ws connections reconnect <wid> <connectionId>
+devic ws connections enable|disable <wid> <connectionId>
 devic ws automations runs <wid> [--automation <id>] [--status] [--query k=v]...
 devic ws automations run <wid> <runId> [--summary] | rerun <wid> <runId>
 ```

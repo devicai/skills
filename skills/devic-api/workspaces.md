@@ -98,10 +98,16 @@ Messages written in the apps have no `origin`.
 | GET | `/api/v1/workspaces/{wid}/threads/{tid}/files/{fileId}/download` | Download a file (binary) |
 | GET/POST | `/api/v1/workspaces/{wid}/assistants/{aid}/memory/core` | Core memory of an assistant |
 | PATCH/DELETE | `/api/v1/workspaces/{wid}/assistants/{aid}/memory/core/{entryId}` | Edit or delete a memory entry |
-| GET/POST | `/api/v1/workspaces/{wid}/automations` | List or create automations |
+| GET/POST | `/api/v1/workspaces/{wid}/automations` | List automations, or create an empty draft |
+| GET | `/api/v1/workspaces/{wid}/automations/{capabilities\|destinations\|connections\|triggers}` | What a draft can use (see *Composing a draft*) |
+| PUT | `/api/v1/workspaces/{wid}/automations/{id}/draft` | Save the next draft version |
 | GET/DELETE | `/api/v1/workspaces/{wid}/automations/{id}` | Read or delete an automation |
 | PATCH | `/api/v1/workspaces/{wid}/automations/{id}/settings` | Edit its settings |
 | POST | `/api/v1/workspaces/{wid}/automations/{id}/{activate\|pause\|invoke\|test}` | Control it |
+| GET | `/api/v1/workspaces/{wid}/integrations/catalog` | Apps that can be connected |
+| GET/POST | `/api/v1/workspaces/{wid}/connections` | Connected accounts; start a connection (authorization link) |
+| POST | `/api/v1/workspaces/{wid}/connections/{cid}/reconnect` | A new authorization link |
+| POST/DELETE | `/api/v1/workspaces/{wid}/connections/{cid}/grant` | Enable or disable your own account here |
 | POST | `/api/v1/workspaces/{wid}/automations/schedule-preview` | Preview a schedule |
 | GET | `/api/v1/workspaces/{wid}/automation-runs` | Its runs |
 | GET | `/api/v1/workspaces/{wid}/automation-runs/{id}` | One run (`/summary`, `/input`) |
@@ -318,12 +324,117 @@ DELETE /api/v1/workspaces/{wid}/assistants/{aid}/memory/core/{entryId}
 
 ## Automations
 
-An automation is created from a plan, then controlled with
-`activate`, `pause`, `invoke` and `test`. Runs are listed with
-`GET /{wid}/automation-runs`.
+An automation is a routine of a workspace: it reacts to an app event, runs on a
+schedule or runs on demand, and posts its results in a destination workspace.
+It is always built in two steps:
 
-- `manageContent` is required for everything except listing.
-- Automations run on behalf of whoever created them. One created by the account integration has no person behind it, so it cannot use anyone's connected accounts.
+1. Someone saves a **draft**: a validated plan, with a `draftVersion`.
+2. **A person activates** that version and picks the model. A draft never runs.
+
+The app has a designer assistant that writes drafts in a conversation. Through
+the API you compose the draft yourself with the same reads the designer uses,
+and with the same validation.
+
+Everything needs `manageContent` on the automation's workspace (its owner or a
+manager), except listing automations and runs, which needs `read`. Automations
+run on behalf of whoever created them. One created by the account integration
+has no person behind it, so it cannot use anyone's connected accounts.
+
+### Composing a draft
+
+| Method | Endpoint | Returns |
+|--------|----------|---------|
+| GET | `/{wid}/automations/capabilities` | `{ sources: ["composio","cron","manual"], includedModel: { modelAccess, provider, model } \| null, designAvailable, triggersAvailable, schedulesAvailable }` |
+| GET | `/{wid}/automations/destinations` | `{ items }`: workspaces usable as `targetWorkspaceId` |
+| GET | `/{wid}/automations/destinations/{target}/assistants` | `{ workspaceId, items }`: assistants usable as `targetAssistantId` |
+| GET | `/{wid}/automations/destinations/{target}/threads` | Threads of one destination: `query`, `mode` (`keywords` \| `literal` \| `regex` \| `list`), `searchIn` (`titles` \| `messages` \| `all`), `match` (`all` \| `any`), `limit` (1–50), `before` (`nextCursor`) |
+| GET | `/{wid}/automations/destinations/{target}/threads/{tid}` | Latest public messages of a thread: `query` (literal filter), `limit`, `beforeSeq`, `afterSeq` |
+| GET | `/{wid}/automations/connections` | `{ items }`: connected accounts this automation may use |
+| GET | `/{wid}/automations/connections/{cid}/tools` | `{ tools }`: exact tool names and schemas of one account |
+| GET | `/{wid}/automations/triggers?integration=gmail&query=` | App events (trigger types) of one app; `cursor` for the next page |
+| GET | `/{wid}/automations/triggers/{slug}` | Configuration schema, payload schema and provider setup instructions |
+| POST | `/{wid}/automations/schedule-preview` | `{ expression, timezone }` → the next five run dates |
+| POST | `/{wid}/automations` | `{ name?, sourceThreadId? }` → `{ automation, thread }`, an empty draft |
+| PUT | `/{wid}/automations/{id}/draft` | The plan, plus optional `version` → `{ automation, requiresActivation: true }` |
+
+Rules that the validation enforces:
+
+- **Destinations.** A shared workspace can only post to workspaces whose members include all of its own members (`AUTOMATION_DESTINATION_AUDIENCE_MISMATCH`). A personal workspace can post to any workspace its owner can write to.
+- **Accounts.** A shared workspace uses accounts connected **for everyone** in it. A personal workspace uses its owner's own accounts. Anything else returns `AUTOMATION_CONNECTION_NOT_SHARED` or `AUTOMATION_CONNECTION_NOT_GRANTED`. Two accounts of the same app are not interchangeable: use each connection's `id`.
+- **Tools.** Every name in `externalTools` must come from `connections/{cid}/tools` for that account (`AUTOMATION_TOOL_UNAVAILABLE`).
+- **Triggers.** The trigger must belong to the app of `connectionId` (`AUTOMATION_TRIGGER_CONNECTION_MISMATCH`), and `triggerConfig` must carry its required fields (`AUTOMATION_MISSING_CONFIG_FIELD:<field>`). Read the trigger's instructions: some providers also need a webhook set up in their own console, which OAuth alone does not do.
+
+### The plan
+
+The `PUT .../draft` body is the plan.
+
+```json
+{
+  "version": 0,
+  "name": "Meeting summaries",
+  "instructions": "Find the customer by the attendee's email domain. Search the destination for a thread with that domain in its messages; if none, create one titled with the company name. Post the summary and the transcript.",
+  "targetWorkspaceId": "w-sales",
+  "connectionId": "c-fathom",
+  "triggerSlug": "FATHOM_NEW_RECORDING",
+  "triggerConfig": {},
+  "connections": [
+    { "connectionId": "c-fathom", "externalTools": ["FATHOM_GET_TRANSCRIPT"], "alwaysLoadedTools": ["FATHOM_GET_TRANSCRIPT"] },
+    { "connectionId": "c-zoho", "externalTools": ["ZOHO_SEARCH_CONTACTS"] }
+  ]
+}
+```
+
+| Field | |
+|---|---|
+| `name`, `instructions`, `targetWorkspaceId` | Required. `instructions` (at most 16000 characters) is everything a run will know: say how to resolve the entity, how to find or create the thread, what to post, and what to do when the match is ambiguous |
+| `source` | Omit it for an app event. `{ "type": "cron", "expression": "0 9 * * 1-5", "timezone": "Europe/Madrid" }` for a schedule; preview it first, and ask for the time zone rather than guessing it. `{ "type": "manual" }` for a routine people start from a thread |
+| `connectionId`, `triggerSlug`, `triggerConfig` | App events only: the account the trigger listens on, and its configuration |
+| `connections` | `[{ connectionId, externalTools, alwaysLoadedTools? }]`: the tools each account grants to the runs. It may be empty. Include the trigger account only if its tools are needed. `alwaysLoadedTools` is a subset loaded from the first call; the rest are discovered on demand |
+| `targetAssistantId` | Optional assistant of the destination that each run asks to answer |
+| `nativeTools` | `{ "alwaysLoadedTools": ["search_web", "web_extract"] }` to load web search from the first call. Runs can always discover them |
+| `version` | Optional: the current `draftVersion`. If someone saved another version in between, the save returns `409 AUTOMATION_DRAFT_CHANGED` and writes nothing |
+
+Each save that passes validation increments `draftVersion`. A plan that fails
+validation writes nothing.
+
+### Activating and running
+
+| Method | Endpoint | |
+|--------|----------|---|
+| POST | `/{wid}/automations/{id}/activate` | `{ version, modelAccess: "included" \| "byok", provider, model, maxInputTokens? }`. Use the included model from `capabilities`, or a provider and model with the account's own key. `version` must be the current `draftVersion` |
+| POST | `/{wid}/automations/{id}/pause` | Stops it; queued occurrences are cancelled |
+| POST | `/{wid}/automations/{id}/test` | `{ operationId }`: runs the approved version of a scheduled automation now. A real run |
+| POST | `/{wid}/automations/{id}/invoke` | `{ clientRequestId: uuid, threadId, input? }`: starts an on-demand automation from a thread |
+| PATCH | `/{wid}/automations/{id}/settings` | `{ maxInputTokens, revision }`: the input limit per event or tool result, without a new approval |
+| DELETE | `/{wid}/automations/{id}` | Deletes it and stops its trigger and schedule |
+| GET | `/{wid}/automation-runs` | Runs, newest first: `automationId`, `limit` (≤ 50), `before` |
+| GET | `/{wid}/automation-runs/{id}` | One run (`/summary`, `/input`); `POST .../rerun` runs it again |
+
+Activation is the approval. An agent working for someone should save the draft,
+show them the plan, and activate only when they ask.
+
+## Integrations
+
+The app accounts (Gmail, HubSpot, Notion…) a workspace can use, for automations
+and for its assistants.
+
+| Method | Endpoint | |
+|--------|----------|---|
+| GET | `/{wid}/integrations/catalog?search=` | Apps by name, or by task with `semantic=true`, and whether each is connected |
+| GET | `/{wid}/connections` | Accounts shared in this workspace, and your own with `granted` (enabled here) |
+| POST | `/{wid}/connections` | `{ integration, scope: "workspace" \| "user", name?, authScheme? }` → the connection, with `redirectUrl` |
+| POST | `/{wid}/connections/{cid}/reconnect` | A new `redirectUrl` for a pending or expired connection |
+| POST / DELETE | `/{wid}/connections/{cid}/grant` | Enable or disable one of your own accounts in this workspace |
+
+**Connecting is done by a person.** `POST /connections` creates a pending
+connection and returns the provider's authorization link in `redirectUrl`.
+Give that link to the person. The account is connected only once they open it
+and accept the consent screen; then it appears in `GET /connections` with
+`status: "active"`. The API never completes an authorization on anyone's behalf.
+
+- `scope: "workspace"` connects an account **for everyone** in the workspace. It needs `manageContent`, and it is what shared automations require.
+- `scope: "user"` connects the caller's own account and enables it in this workspace. It needs a person: the account integration gets `403 PERSONAL_CONNECTION_REQUIRES_USER`.
+- Only app integrations can be connected this way. Remote MCP servers come from the account's tool servers in the app.
 
 ---
 
