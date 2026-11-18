@@ -1,6 +1,6 @@
 ---
 name: devic-api
-description: Devic AI Platform API reference for assistants, agents, tool servers, code snippets, workspaces (threads, messages, unread, documents, memory, skills, automations), knowledge documents and skills, tenants (multi-tenant cost & usage limits) and tenant sessions (signed tokens for browser credentials). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
+description: Devic AI Platform API reference for assistants, agents, tool servers, code snippets, workspaces (threads, messages, unread, documents, memory, skills, automations), knowledge documents and skills, projects, app integrations and triggers, tenants (multi-tenant cost & usage limits) and tenant sessions (signed tokens for browser credentials). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
 ---
 
 # Devic API
@@ -60,22 +60,31 @@ All API responses follow a standardized format:
 {
   "success": true,
   "data": { ... },
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "meta": { "timestamp": "2024-01-15T10:30:00.000Z", "duration": "42ms" }
 }
 ```
 
-### Error Response
+A handler result that already has a top-level `success` or `error` key is returned
+**as is**, without the wrapper (for example `{ "success": true, "message": "Tool server deleted" }`).
 
-```json
-{
-  "success": false,
-  "error": {
-    "message": "Error description",
-    "code": "ERROR_CODE"
-  },
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
+### Error Responses
+
+Errors come in three shapes. Check the HTTP status **and** the presence of an `error` key:
+
+1. **Error with a code.** The HTTP status is 4xx/5xx and the body carries a code:
+   ```json
+   { "error": "CHAT_BUSY", "message": "The conversation is processing a previous message" }
+   ```
+   Some carry extra fields, for example the usage-limit 429 (`details`, `retryAfter`) or
+   the deprecated-model 410 (`replacementModel`).
+2. **Plain HTTP error.** The HTTP status is 4xx/5xx and the body uses the framework format,
+   where `error` is the status name, not a code:
+   ```json
+   { "statusCode": 404, "message": "Tool server not found", "error": "Not Found" }
+   ```
+3. **Failure reported with a success status.** Some endpoints answer 200/201 with a body
+   such as `{ "error": "THREAD_CANNOT_BE_MANUALLY_COMPLETED" }`. Each file lists where this
+   happens.
 
 ## Architecture Overview
 
@@ -267,6 +276,7 @@ Manage the knowledge your assistants and agents read at runtime, and the skills 
 - Attach documents or folders to an assistant, an agent or an environment
 - Publish a document or folder as a **skill**: its name and description go into the system prompt and the model loads the full instructions on demand
 - Scaffold a folder-skill (folder + `SKILL.md`) in one call, browse the skills catalog, download a skill tree
+- Skills **are** documents and folders: there is no `/api/v1/skills`. Create and edit them through `/api/v1/documents` and `/api/v1/document-folders`; the skill routes live under `/api/v1/documents/skills`
 
 **Base paths:** `/api/v1/documents` · `/api/v1/document-folders`
 
@@ -335,7 +345,33 @@ Functions you write once and give to agents and assistants as tools.
 
 For detailed documentation, see [code-snippets.md](code-snippets.md).
 
-### 14. Workspaces API
+### 14. Projects API
+
+Group agents, assistants, documents, tool servers and environments under a project, and read what happened inside it.
+
+- Create, list, update and archive projects (`identifier` is unique and immutable; `visibility` is `private` or `public`)
+- `DELETE` archives a project; `PATCH { "archived": false }` restores it
+- Read a project's agent threads and assistant conversations
+- Read its current-month stats and its daily/monthly cost records, optionally narrowed to one tenant
+
+**Base path:** `/api/v1/projects`
+
+For detailed documentation, see [projects.md](projects.md).
+
+### 15. Integrations & Triggers API
+
+Connect third-party apps (Gmail, Drive, HubSpot, …) and start agents or assistants from their events.
+
+- Browse the app catalogue and each app's event types
+- Connect an account: API-key apps in one call, OAuth apps through an `authorizationUrl`; missing credentials answer `INTEGRATION_SETUP_REQUIRED` with the fields to send
+- Build an integration tool server from the connected account, choose which of the app's tools it exposes, and test a tool against the real account
+- Create triggers that start an agent (`agentId`) or an assistant (`assistantId`, its identifier) on each event, with message templates, rate limits and a delivery log
+
+**Base paths:** `/api/v1/integrations` · `/api/v1/triggers`
+
+For detailed documentation, see [integrations.md](integrations.md).
+
+### 16. Workspaces API
 
 Shared spaces where people and assistants work in threads.
 
