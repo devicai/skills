@@ -380,11 +380,14 @@ Shared spaces where people and assistants work in threads.
 - Answer an assistant's questions, approve, cancel or retry its runs
 - Download the files of a thread and list every document of a workspace
 - Configure everything: settings, members, assistants, knowledge and skills, rules, core memory and automations
+- Build automations without the in-app designer: discover destinations, accounts, app events and tools, connect a missing app through an authorization link, save a validated draft
 - Same permissions as the apps. An API key acts for a person with `X-Devic-User`, or as the account integration ("API") without it
 
 **Base path:** `/api/v1/workspaces`
 
 For detailed documentation, see [workspaces.md](workspaces.md). For task recipes (identity, unread inbox, answering and approving runs, CLI equivalents) see the standalone `devic-workspaces` skill.
+
+**Building an automation** (app event, schedule or on demand) for someone, from an MCP client or the API: follow [workspace-automations.md](workspace-automations.md), a step-by-step recipe from inventory to a draft the person activates.
 
 ## Pagination
 
