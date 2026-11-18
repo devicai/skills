@@ -1,6 +1,6 @@
 ---
 name: devic-cli
-description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, building agent workflows that interact with assistants, agents, tool servers, code snippets, documents and feedback, scheduling agents to run themselves (cron, time of day, every N days), managing environments and provisioning or testing sandboxes and snapshots, or creating, browsing and installing Devic skills (including into local coding agents: claude-code, codex, cursor, opencode, cline)."
+description: "@devicai/cli reference — the Devic AI Platform CLI. Use when executing Devic API operations from the command line, scripting automations, building agent workflows that interact with assistants, agents, tool servers, code snippets, documents and feedback, working in Workspaces (threads across workspaces, unread, sending messages and waiting for assistant replies, answering their questions, downloading thread files, members, rules, core memory, skills and automations — acting as a person of the account with --as / DEVIC_USER), scheduling agents to run themselves (cron, time of day, every N days), managing environments and provisioning or testing sandboxes and snapshots, or creating, browsing and installing Devic skills (including into local coding agents: claude-code, codex, cursor, opencode, cline)."
 ---
 
 # @devicai/cli
@@ -34,6 +34,7 @@ Environment variables override stored config:
 |----------|-------------|
 | `DEVIC_API_KEY` | API key |
 | `DEVIC_BASE_URL` | API base URL (default: `https://api.devic.ai`) |
+| `DEVIC_USER` | Workspaces only: person of the account to act as (userUID or email, header `X-Devic-User`). Same as `devic ws --as` |
 
 ## Global Options
 
@@ -972,6 +973,41 @@ list, add the snippet's `toolName` to it too** (for example with
 
 ---
 
+### devic workspaces
+
+Workspaces: shared spaces where people and assistants work in threads. Alias:
+`devic ws`. Ids go workspace → thread → invocation/file (`<wid> <tid> ...`).
+With an API key, `--as <userUID|email>` (or `DEVIC_USER`) acts as that person
+of the account; without it the key acts as the account's "API" integration
+(shared workspaces only). `devic ws me` shows who you are.
+
+```bash
+devic ws list --search ventas --limit 20
+devic ws threads list --unread                    # across every workspace
+devic ws threads get <wid> <tid> -o human         # transcript + pending questions
+devic ws threads messages <wid> <tid> --after 41  # newer than seq 41
+devic ws send <wid> <tid> "Draft the reply" --assistant <aid> --wait
+devic ws answer <wid> <tid> <invocationId> --answers '[{"id":"q1","selected":["eur"]}]'
+devic ws approve <wid> <tid> <invocationId>   # approve a tool call the run is waiting on
+devic ws threads read <wid> <tid>
+devic ws files download <wid> <tid> <fileId> --out ./downloads/   # never overwrites without --force
+```
+
+`send --wait` polls until the invocations the message started finish or wait
+on someone; it returns `{message, outcome, invocations, messages}` (`outcome`:
+`completed` | `failed` | `waiting` | `no_invocations`) and exits 3 on timeout.
+`answer` fetches the invocation's `revision` and `requestedInput.id` itself.
+
+Also: `create`/`update`, `members set|remove`, `assistants`, `resources`,
+`skills attach|detach` (over `resources.knowledgeSkills`), `knowledge catalog`,
+`documents`, `memory` (assistant core memory), `rules` (workspace or
+`--thread`; `expectedRevision` filled in) and `automations` (incl. `runs`).
+Full command tree, revision handling and examples:
+[workspaces.md](workspaces.md).
+See also the standalone `devic-workspaces` skill for task recipes.
+
+---
+
 ### devic feedback
 
 Submit and view feedback on chat messages and thread messages.
@@ -1137,6 +1173,23 @@ devic agents create --name "Nightly analytics report" \
 
 Step 3 is the one worth keeping: a sandbox you drive by hand is the same
 machine the agent will get, so a script verified there is verified for real.
+
+### Work a Workspaces thread as a person
+
+```bash
+export DEVIC_USER=ana@acme.com          # act as Ana (API key auth)
+
+# What is waiting for me, everywhere
+devic ws threads list --unread -o json | jq -r '.threads[] | select(.waitingForMe) | "\(.workspaceId) \(.id) \(.title)"'
+
+# Ask, wait for the reply; if the assistant asks back, answer it
+OUT=$(devic ws send "$WID" "$TID" "Close the Q3 report" --assistant "$AID" --wait -o json | grep -v '^{"type":')
+if [ "$(echo "$OUT" | jq -r .outcome)" = "waiting" ]; then
+  RID=$(echo "$OUT" | jq -r '.invocations[] | select(.status=="waiting_input") | .id')
+  devic ws answer "$WID" "$TID" "$RID" --answers '[{"id":"currency","selected":["eur"]}]'
+fi
+devic ws threads read "$WID" "$TID"
+```
 
 ### Pipe JSON between commands
 

@@ -1,6 +1,6 @@
 ---
 name: devic-api
-description: Devic AI Platform API reference for assistants, agents, tool servers, code snippets, knowledge documents and skills, projects, app integrations and triggers, tenants (multi-tenant cost & usage limits) and tenant sessions (signed tokens for browser credentials). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
+description: Devic AI Platform API reference for assistants, agents, tool servers, code snippets, workspaces (threads, messages, unread, documents, memory, skills, automations), knowledge documents and skills, projects, app integrations and triggers, tenants (multi-tenant cost & usage limits) and tenant sessions (signed tokens for browser credentials). Use when working with Devic API endpoints, creating integrations, or building applications that interact with the Devic platform.
 ---
 
 # Devic API
@@ -370,6 +370,21 @@ Connect third-party apps (Gmail, Drive, HubSpot, …) and start agents or assist
 **Base paths:** `/api/v1/integrations` · `/api/v1/triggers`
 
 For detailed documentation, see [integrations.md](integrations.md).
+
+### 16. Workspaces API
+
+Shared spaces where people and assistants work in threads.
+
+- List and search workspaces and threads, including only the unread ones, with pagination
+- Read a thread by pages and write messages; the server records who wrote them and through what channel (`api`, `cli`, `sdk`)
+- Answer an assistant's questions, approve, cancel or retry its runs
+- Download the files of a thread and list every document of a workspace
+- Configure everything: settings, members, assistants, knowledge and skills, rules, core memory and automations
+- Same permissions as the apps. An API key acts for a person with `X-Devic-User`, or as the account integration ("API") without it
+
+**Base path:** `/api/v1/workspaces`
+
+For detailed documentation, see [workspaces.md](workspaces.md). For task recipes (identity, unread inbox, answering and approving runs, CLI equivalents) see the standalone `devic-workspaces` skill.
 
 ## Pagination
 
