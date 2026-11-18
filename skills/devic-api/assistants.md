@@ -6,7 +6,7 @@ The Assistants API allows you to interact with AI assistants that can process me
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/assistants` | List all assistant specializations |
+| GET | `/api/v1/assistants` | List the account's custom assistants |
 | GET | `/api/v1/assistants/:identifier` | Get specific assistant |
 | POST | `/api/v1/assistants` | Create a new assistant |
 | PATCH | `/api/v1/assistants/:identifier` | Update an assistant |
@@ -19,11 +19,18 @@ The Assistants API allows you to interact with AI assistants that can process me
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/stop` | Stop an in-progress async chat |
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/resume` | End a timed assistant pause early and continue the same turn |
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/tool-response` | Submit tool responses (Model Interface Protocol) |
+| POST | `/api/v1/assistants/:identifier/chats/:chatUid/tool-approvals` | Approve or reject backend tool calls waiting for approval |
+| POST | `/api/v1/assistants/:identifier/chats/:chatUid/mcp-elicitations` | Answer MCP input requests (elicitations) |
+| POST | `/api/v1/assistants/:identifier/chats/:chatUid/compact` | Compact an idle conversation now |
+| GET | `/api/v1/assistants/:identifier/chats/:chatUid/search` | Search messages within one conversation |
 | GET | `/api/v1/assistants/:identifier/chats/:chatUid/pins` | List the pinned messages of a conversation |
 | POST | `/api/v1/assistants/:identifier/chats/:chatUid/pins` | Pin a user or assistant message |
 | DELETE | `/api/v1/assistants/:identifier/chats/:chatUid/pins/:messageUid` | Unpin a message |
 | POST | `/api/v1/assistants/chats` | Get all chat histories with filters |
 | GET | `/api/v1/assistants/tags` | Get unique tags from chat histories |
+
+Chat feedback (`POST`/`GET …/chats/:chatUid/feedback`) is documented in
+[feedback.md](feedback.md).
 
 ---
 
@@ -42,7 +49,7 @@ Assistant Specializations define how an assistant behaves, what tools it can use
 | `availableToolsGroupsUids` | string[] | Tool group IDs the assistant can use |
 | `enabledTools` | string[] \| null | Explicit subset of enabled tool names, attached code snippets included (by their `toolName`). `null` enables every tool, `[]` enables none |
 | `model` | string | Default LLM model |
-| `provider` | string | Default LLM provider |
+| `provider` | string | Default LLM provider: `open-ai`, `deepseek`, `anthropic`, `google-gemini`, `kimi` or `xai` |
 | `memoryDocuments` | object[] | Persistent context documents |
 | `inputDelayMs` | number | Message buffer delay in ms for async mode (500–30000). See [Message Buffering](#message-buffering-input-delay) |
 | `contextManagement` | object | Context depth control (summarize older turns). See [Context Depth](#context-depth) |
@@ -83,7 +90,8 @@ Controls visibility and external API access:
 
 ## List Assistant Specializations
 
-Retrieves a list of all available assistant specializations (both default and custom).
+Retrieves the account's custom assistants, sorted by name. Built-in
+specializations are not listed.
 
 ```
 GET /api/v1/assistants
@@ -93,7 +101,8 @@ GET /api/v1/assistants
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `external` | boolean | No | Include only assistants configured for external access |
+| `external` | boolean | No | Include only assistants with `accessConfiguration.externalAccess: true`. Send it only to filter: the value is not parsed, so `?external=false` filters too |
+| `projectId` | string | No | Only assistants of this project. A non-admin caller without access to the project gets **403** |
 
 ### Response
 
@@ -102,22 +111,24 @@ GET /api/v1/assistants
   "success": true,
   "data": [
     {
-      "identifier": "default",
-      "name": "General Assistant",
-      "description": "A general-purpose AI assistant",
-      "enabled": true,
-      "externalEnabled": true
-    },
-    {
-      "identifier": "code-helper",
-      "name": "Code Assistant",
-      "description": "Specialized in coding tasks",
-      "enabled": true,
-      "externalEnabled": false
+      "identifier": "a1289b11-fe5a-4c50-8e90-138850651932",
+      "name": "Sales Assistant",
+      "description": "A sales-oriented AI assistant",
+      "state": "active",
+      "imgUrl": "https://example.com/avatar.png",
+      "model": "gpt-5",
+      "isCustom": true,
+      "creationTimestampMs": 1751020800000,
+      "projectId": "6712f0c1a4b2c3d4e5f60718"
     }
   ]
 }
 ```
+
+Each item carries `identifier`, `name`, `description`, `state`, `imgUrl`,
+`avatarStyle`, `model`, `isCustom` (always `true`), `creationTimestampMs` and
+`projectId`. Read one assistant with `GET /api/v1/assistants/:identifier` for
+its configuration.
 
 ### Example
 
@@ -146,7 +157,7 @@ GET /api/v1/assistants/:identifier
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `includePresets` | boolean | `false` | Return the assistant's system prompt in `presets`. See [Reading the System Prompt](#reading-the-system-prompt) |
+| `includePresets` | boolean | `false` | `true` or `1` returns the assistant's system prompt in `presets`. See [Reading the System Prompt](#reading-the-system-prompt) |
 
 ### Response
 
@@ -159,20 +170,47 @@ GET /api/v1/assistants/:identifier
     "description": "A sales-oriented AI assistant",
     "state": "active",
     "imgUrl": "https://example.com/avatar.png",
+    "projectId": "6712f0c1a4b2c3d4e5f60718",
     "model": "gpt-5",
+    "provider": "open-ai",
+    "effectiveModel": "gpt-5",
+    "effectiveProvider": "open-ai",
+    "modelSource": "assistant",
+    "reasoningEffort": null,
     "isCustom": true,
     "creationTimestampMs": 1751020800000,
     "availableToolsGroupsUids": ["6712f0c1a4b2c3d4e5f60718"],
     "enabledTools": ["search_customers", "create_deal"],
-    "tenantIntegrations": { "enabled": true, "count": 4 }
+    "smartTools": { "enabled": false },
+    "inputDelayMs": 3000,
+    "messageQueueEnabled": true,
+    "maxQueuedMessages": 50,
+    "pauseAndResumeEnabled": false,
+    "liveVoice": { "enabled": false },
+    "knowledgeSkills": [{ "id": "6712f0c1a4b2c3d4e5f60799", "type": "document" }],
+    "tenantIntegrations": { "enabled": true, "count": 4 },
+    "tenantMcpServers": { "enabled": false, "count": 0 }
   }
 }
 ```
 
-`availableToolsGroupsUids` and `enabledTools` are only returned for custom
-assistants. An `enabledTools` of `null` means every tool of the assigned tool
-groups is enabled. Read them before a partial update if you intend to preserve
-the current tool selection — see [Update Assistant](#update-assistant).
+- `model`/`provider` are what is saved on the assistant (`null` when unset);
+  `effectiveModel`/`effectiveProvider` are what a run uses when the message does
+  not override them, and `modelSource` says where that comes from
+  (`assistant`, `account_default` or `platform_default`).
+- `projectId`, `avatarStyle`, `availableToolsGroupsUids`, `enabledTools`,
+  `smartTools`, `inputDelayMs`, `messageQueueEnabled`, `maxQueuedMessages`,
+  `pauseAndResumeEnabled`, `liveVoice` and `knowledgeSkills` are only returned
+  for custom assistants. An `enabledTools` of `null` means every tool of the
+  assigned tool groups is enabled. Read them before a partial update if you
+  intend to preserve the current tool selection — see
+  [Update Assistant](#update-assistant).
+- This endpoint does **not** return the rest of the configuration
+  (`accessConfiguration`, `widgetConfiguration`, `memory`, `contextManagement`,
+  `structuredOutput`, `guardrailsConfiguration`, `subagentsIds`, ...). Those
+  come back only in the create/update response.
+- `tenantMcpServers` follows the same contract as `tenantIntegrations` below,
+  for MCP servers the tenant connects themselves.
 
 ### Does this assistant offer connected apps?
 
@@ -277,30 +315,51 @@ POST /api/v1/assistants
 |-------|------|----------|-------------|
 | `name` | string | **Yes** | Assistant display name |
 | `description` | string | No | Description of the assistant's purpose |
+| `projectId` | string | No | Project the assistant belongs to |
 | `presets` | string | No | System prompt / instructions |
-| `model` | string | No | Default LLM model |
+| `model` | string | No | Default LLM model. Must be a known model (see `GET /api/v1/models`) and belong to `provider` when both are sent, or the request fails with 400 |
 | `reasoningEffort` | string \| null | No | Saved assistant effort. Null clears it; choose a model-supported level. See [conversation options](conversation-options.md). |
-| `provider` | string | No | Default LLM provider |
+| `provider` | string | No | Default LLM provider: `open-ai`, `deepseek`, `anthropic`, `google-gemini`, `kimi` or `xai` |
 | `imgUrl` | string | No | Image URL for the assistant |
+| `avatarStyle` | object | No | Generated-avatar style used when there is no `imgUrl`: `{ shape?: "round" \| "organic" \| "boxy" \| "nub" \| "cloud" \| "sun", hue?: 0-359, tone?: "pastel" \| "neutral" \| "mid" \| "deep" \| "bright" \| "ink" }`. Omitted fields keep deriving from the id |
 | `state` | string | No | State: `active`, `inactive`, or `coming_soon` |
 | `availableToolsGroupsUids` | string[] | No | Tool group UIDs the assistant can use |
 | `enabledTools` | string[] \| null | No | Explicit subset of enabled tool names, attached code snippets included (by their `toolName`). Defaults to every tool |
+| `smartTools` | object | No | `{ enabled?: boolean, alwaysTools?: string[] }`. When `enabled`, only the tools named in `alwaysTools` go in the prompt; the assistant finds the rest with the injected `discover_tools` tool and loads them with `load_tools`. Omitted or `enabled: false`: every configured tool is in the prompt |
 | `accessConfiguration` | object | No | `{ externalAccess?: boolean, visibilityByRole?: string[] }` |
 | `widgetConfiguration` | object | No | `{ enabled?: boolean, sourcesWhiteList?: string[], color?: string, welcomeMessage?: string }` |
 | `memoryDocuments` | object[] | No | RAG memory documents `[{ genericDocument?, name?, summary? }]` |
+| `memory` | object | No | Long-term memory. See [Long-term memory](#long-term-memory-memory) |
+| `liveVoice` | object | No | Real-time voice: `{ enabled?: boolean, voice?: string, customVoiceId?: string, instructions?: string, language?: string, maxDurationSeconds?: number, idleTimeoutSeconds?: number, recordSessions?: boolean, countTowardsTenantLimits?: boolean }`. When a session starts, `maxDurationSeconds` is clamped to 30–6000 (default 6000), `idleTimeoutSeconds` to 30–900 (default 180, `0` = never), `voice` defaults to `marin`, `recordSessions` defaults to `true`, `instructions` may not exceed 16000 characters |
 | `structuredOutput` | object | No | JSON schema configuration for structured output |
+| `structuredOutputEnabled` | boolean | No | Whether `structuredOutput` is applied. `false` keeps the schema stored but unused |
 | `guardrailsConfiguration` | object | No | `{ enabled?: boolean, guardrails?: any }` |
 | `codeSnippetIds` | string[] | No | Ids of the [code snippets](code-snippets.md) the assistant can call as tools |
-| `availableSkillIds` | string[] | No | Skill IDs the assistant can use |
-| `subagentsIds` | string[] | No | Subagent IDs the assistant can invoke |
+| `availableSkillIds` | string[] | No | Legacy Tool Skill IDs (mounted at runtime with `mount_skill`). Not the skills catalogue — for that use `knowledgeSkills` |
+| `knowledgeSkills` | object[] | No | Knowledge Skills from `GET /api/v1/documents/skills`: `[{ id: string, type: "document" \| "folder", enabled?: boolean (default true), preloadContent?: boolean (default false) }]`. An `id` that is not a skill of the declared `type` fails with 400 |
+| `subagentsIds` | string[] | No | Subagent (agent) IDs the assistant can invoke. Non-existing, disabled or archived agents fail with 400 |
 | `maxChatMessages` | number | No | Maximum chat messages to include in context |
 | `maxToolResponseInputTokens` | number | No | Maximum input tokens for tool responses |
-| `inputDelayMs` | number | No | Message buffer delay in ms for async mode (min: 500, max: 30000). See [Message Buffering](#message-buffering-input-delay) |
-| `contextManagement` | object | No | Context depth control: `{ fullContextTurnDepth?: number, alwaysIncludeUserMessages?: boolean }`. See [Context Depth](#context-depth) |
+| `toolResponseOverflow` | object | No | What happens to a tool response over `maxToolResponseInputTokens`: `{ saveToDocument?: boolean, previewCharacters?: number }`. With `saveToDocument: true` the full payload is stored as a JSON document and the model gets a preview plus its URL; otherwise it is truncated. `previewCharacters` defaults to 1000 (intended range 100–20000) |
+| `inputDelayMs` | number | No | Message buffer delay in ms for async mode (intended range 500–30000). See [Message Buffering](#message-buffering-input-delay) |
+| `messageQueueEnabled` | boolean | No | Accept async messages sent while the conversation is busy (run in flight, or waiting on a subagent, timed pause, tool response or user action) and answer them later, instead of rejecting them with 409 `CHAT_BUSY`. Off by default |
+| `maxQueuedMessages` | number | No | How many messages may wait in the queue before further sends get 409. Default 50, capped at 500; values below 1 use the default |
+| `contextManagement` | object | No | Context depth control: `{ fullContextTurnDepth?: number, alwaysIncludeUserMessages?: boolean, compaction?: object }`. See [Context Depth](#context-depth) |
+| `pauseAndResumeEnabled` | boolean | No | Give the assistant the built-in `pause_and_resume` tool (off by default). See [Resume a Timed Assistant Pause Early](#resume-a-timed-assistant-pause-early) |
+| `requiredToolUse` | object | No | `{ enabled?: boolean, finishToolName?: string }`. When enabled, the assistant must end every execution by calling a finish tool (`tool_choice` forced to required). Without `finishToolName` the built-in `finish_execution` tool is injected and its `message` argument becomes the final answer |
+| `sandboxPreprovision` | object | No | `{ enabled?: boolean, timeoutMinutes?: number (default 5), ports?: number[], runtime?: "node24" \| "node22" \| "python3.13" }`. Starts the terminal sandbox in the background when a conversation starts or resumes. Needs the Terminal Sandbox tool group or an Environment with a sandbox |
+
+The API does not validate request bodies against these types or ranges: a
+value of the wrong type or out of range is stored as sent, so stay within what
+the table says. There is no `identifier` field: the identifier is always
+generated (a UUID).
 
 ### Response (201 Created)
 
-Returns the full assistant detail object (`AssistantDetailResponseDto`):
+Returns the full assistant detail object (`AssistantDetailResponseDto`): every
+field of the table above as stored except `liveVoice` (read it with
+`GET /api/v1/assistants/:identifier`), plus `_id`, `identifier`,
+`creationTimestampMs` and `lastEditTimestampMs`. Fields never set are omitted.
 
 ```json
 {
@@ -312,7 +371,7 @@ Returns the full assistant detail object (`AssistantDetailResponseDto`):
     "description": "Helps with customer inquiries",
     "presets": "You are a helpful support agent...",
     "model": "gpt-4.1-mini",
-    "provider": "openai",
+    "provider": "open-ai",
     "availableToolsGroupsUids": [],
     "codeSnippetIds": [],
     "availableSkillIds": [],
@@ -333,9 +392,15 @@ curl -X POST "https://api.devic.ai/api/v1/assistants" \
     "description": "Helps with sales inquiries",
     "presets": "You are a sales expert...",
     "model": "gpt-4.1-mini",
-    "provider": "openai"
+    "provider": "open-ai"
   }'
 ```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | `name` missing; unknown `model` or `model` not of `provider`; `reasoningEffort` not supported by the model; invalid `subagentsIds` or `knowledgeSkills` |
 
 ---
 
@@ -355,7 +420,11 @@ PATCH /api/v1/assistants/:identifier
 
 ### Request Body
 
-All fields from `CreateAssistantDto` are accepted, but all are optional. Only provided fields will be updated.
+All fields from [Create Assistant](#create-assistant) are accepted, but all are optional. Only provided fields will be updated, with the same validations as on create. `projectId` also accepts `null` to detach the assistant from its project.
+
+Object fields (`memory`, `liveVoice`, `smartTools`, `contextManagement`,
+`accessConfiguration`, ...) and arrays are replaced whole, not merged: send the
+complete value.
 
 `enabledTools` follows the same rule: omit it and the current tool selection is
 left untouched. To change it, send the full list of tool names you want enabled;
@@ -382,7 +451,9 @@ curl -X PATCH "https://api.devic.ai/api/v1/assistants/a1289b11-fe5a-4c50-8e90-13
 
 | Status | Description |
 |--------|-------------|
+| 400 | Same validation failures as [Create Assistant](#create-assistant) |
 | 404 | Assistant specialization not found |
+| 500 | The identifier is a built-in specialization, which cannot be edited |
 
 ---
 
@@ -410,6 +481,10 @@ DELETE /api/v1/assistants/:identifier
 }
 ```
 
+This body is returned as is, without a `data` wrapper. Check `success`: a
+built-in specialization cannot be deleted and answers `200` with
+`{ "success": false, "message": "Assistant with identifier '…' not found" }`.
+
 ### Error Responses
 
 | Status | Description |
@@ -436,23 +511,66 @@ POST /api/v1/assistants/:identifier/messages
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `async` | boolean | false | Enable async mode. Returns chatUid immediately and processes in background. |
+| `async` | boolean | false | Enable async mode (only the exact value `true`). Returns chatUid immediately and processes in background. |
+| `language` | string | - | Language code (e.g. `en`, `es`) the assistant should answer in |
+| `skipSummarization` | boolean | false | `true` skips the automatic per-message summaries, to save latency |
+| `messageTemplate` | string | - | Enables [payload-template mode](#payload-template-mode-webhooks) |
+| `chatUidTemplate` | string | - | Template for `chatUid` in payload-template mode (requires `messageTemplate`) |
+| `userNameTemplate` | string | - | Template for `userName` in payload-template mode (requires `messageTemplate`) |
+| `tz` | string | UTC | IANA timezone used to resolve `{{$date}}` in templates; invalid values fall back to UTC |
 
 ### Request Body
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `message` | string | Yes | The message to send to the assistant |
-| `chatUid` | string | No | Chat conversation ID (for continuing conversations) |
+| `chatUid` | string | No | Chat conversation ID (for continuing conversations). Omit it to start a new one; async mode generates it |
 | `chatName` | string | No | Initial conversation name; ignored for existing chats. Blank/omitted uses automatic naming. |
+| `userName` | string | No | Name of the person writing, for personalization |
 | `reasoningEffort` | string \| null | No | Effort for this turn; null/omission inherits defaults. |
 | `conversationReasoningEffort` | string \| null | No | Save the conversation default; null restores assistant inheritance. |
-| `provider` | string | No | Override the LLM provider (e.g., "openai", "anthropic") |
-| `model` | string | No | Override the model (e.g., "gpt-4", "claude-3-opus") |
+| `provider` | string | No | Override the LLM provider: `open-ai`, `deepseek`, `anthropic`, `google-gemini`, `kimi` or `xai`. The account must have it configured |
+| `model` | string | No | Override the model (e.g. `gpt-5`, `claude-sonnet-4-6`). Must be a known model and belong to `provider` when both are sent |
 | `tags` | string[] | No | Tags to associate with this chat |
 | `metadata` | object | No | Custom metadata to store with the chat. `metadata.promptTemplateParams` fills `{{placeholder}}` variables in the assistant's `presets` — see [Prompt Template Parameters](#prompt-template-parameters). |
 | `tenantId` | string | No | Tenant the conversation belongs to (multi-tenant environments). Auto-registers the tenant on first use and attributes cost/usage to it. See [tenants.md](tenants.md). |
 | `subtenantId` | string | No | End user/entity inside the tenant. When omitted it is derived from `metadata.subtenantMetadata.id` or the legacy `metadata.userId`. Used for per-subtenant cost attribution and usage limits. |
+| `files` | object[] | No | Files attached to the user message: `[{ name: string, donwloadUrl?: string, fileType?: "IMAGE" \| "DOCUMENT" \| "VIDEO" \| "AUDIO" \| "ELECTRICITY_BILL" \| "OTHER" }]`. Note the field is spelled `donwloadUrl` |
+| `images` | object[] | No | Images sent to the model with the message: `[{ imageUrl: string }]` |
+| `previousConversation` | object[] | No | Seeds a **new** conversation with earlier messages: `[{ message: string, role: "user" \| "assistant" }]`. Ignored when `chatUid` names an existing conversation; an entry with another role or a non-string `message` fails the request |
+| `enabledTools` | string[] | No | Restrict this message to these tool names of the assistant's tool groups. `[]` means no tools |
+| `disabledIntegrations` | string[] | No | Slugs of apps the end user connected (tenant integrations) to leave out of this message only, e.g. `["gmail"]` |
+| `tools` | object[] | No | Client-side tools (Model Interface Protocol), OpenAI function format: `[{ type: "function", function: { name, description, parameters } }]`. When the model calls one, the chat waits in `waiting_for_tool_response` until you [submit the result](#submit-tool-responses-model-interface-protocol) |
+| `transcriptId` | string | No | Id of the [speech-to-text](whisper.md) transcript the message came from; stored on the message |
+| `applicationState` | object | No | Accepted but currently ignored by this endpoint |
+
+In async mode, a message that ends up queued (see [below](#response-async))
+loses its `tags` and `images`: the queue does not carry them.
+
+### Payload-template mode (webhooks)
+
+With `?messageTemplate=...` the request body is treated as an opaque payload
+(for pointing a third-party webhook straight at this endpoint) and every body
+field above is ignored. The message is rendered from the template:
+`{{path.to.field}}` reads a dot-path of the body (missing paths render empty,
+objects render as JSON), `{{a.b || c.d}}` takes the first non-empty
+alternative, and `{{$date}}` (`YYYY-MM-DD`), `{{$week}}` (`YYYY-Www`),
+`{{$month}}` (`YYYY-MM`) and `{{$year}}` resolve in `tz`. `chatUidTemplate` and
+`userNameTemplate` work the same way; an empty or missing `chatUid` starts a new
+conversation.
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/messages?async=true&messageTemplate=%7B%7Bmessage.sender.name%7D%7D%3A%20%7B%7Bmessage.text%7D%7D&chatUidTemplate=wa-%7B%7Bmessage.conversationId%7D%7D-%7B%7B%24date%7D%7D" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"message": {"sender": {"name": "Ana"}, "text": "Hi", "conversationId": "c1"}}'
+```
+
+- If the message renders empty, the request is acknowledged with `200` and
+  `data: { "message": "Ignored: message template rendered an empty string" }`
+  (plus `chatUid` when it rendered), and nothing runs.
+- A template that cannot be rendered answers 400. Sending `chatUidTemplate` or
+  `userNameTemplate` without `messageTemplate` answers 400.
 
 ### Prompt Template Parameters
 
@@ -471,7 +589,7 @@ You are a support agent for {{companyName}}. You are talking to {{userName}}.
 Send the values with the message:
 
 ```bash
-curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages" \
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/messages" \
   -H "Authorization: Bearer devic-your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -507,7 +625,7 @@ When `async` is not set or `false`, the request blocks until the assistant finis
 #### Example Request (Sync)
 
 ```bash
-curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages" \
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/messages" \
   -H "Authorization: Bearer devic-your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -519,21 +637,34 @@ curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages" \
 
 #### Response (Sync)
 
+`data` is the array of messages this turn added to the conversation (the user
+message, any tool calls and tool results, and the assistant reply). Text lives
+in `content.message`; read the reply from the last `assistant` message.
+
 ```json
 {
   "success": true,
   "data": [
     {
+      "uid": "6f1c…",
       "role": "user",
-      "content": "Explain the concept of recursion in programming"
+      "content": { "message": "Explain the concept of recursion in programming" },
+      "timestamp": 1705312200000,
+      "chatUid": "chat-123"
     },
     {
+      "uid": "9a2e…",
       "role": "assistant",
-      "content": "Recursion is a programming concept where a function calls itself..."
+      "content": { "message": "Recursion is a programming concept where a function calls itself..." },
+      "timestamp": 1705312203000,
+      "chatUid": "chat-123"
     }
   ]
 }
 ```
+
+To continue the conversation, send the same `chatUid`. If you did not send
+one, take it from the messages' `chatUid`.
 
 ### Asynchronous Mode
 
@@ -542,7 +673,7 @@ When `async=true`, the request returns immediately with a `chatUid`. Use this fo
 #### Example Request (Async)
 
 ```bash
-curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages?async=true" \
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/messages?async=true" \
   -H "Authorization: Bearer devic-your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -561,17 +692,42 @@ curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages?async=true
 }
 ```
 
+When the message cannot start a run right away it is queued on the
+conversation instead, and the response says so:
+
+```json
+{
+  "success": true,
+  "data": {
+    "chatUid": "550e8400-e29b-41d4-a716-446655440000",
+    "queued": true,
+    "queuePosition": 2,
+    "willProcess": "next_turn"
+  }
+}
+```
+
+| `willProcess` | When the message reaches the model |
+|---|---|
+| `after_delay` | The conversation is idle and the assistant has `inputDelayMs`: it runs when the delay window closes |
+| `next_turn` | A run is in flight and picks it up on its next turn |
+| `on_resume` | The conversation waits on a subagent, a timed pause, a tool response or a user action, and the message is handled when it resumes |
+
+`queuePosition` is how many messages are queued, this one included. A
+conversation that is busy only queues when the assistant has
+`messageQueueEnabled`; otherwise the send fails with 409 `CHAT_BUSY`.
+
 After receiving the `chatUid`, poll the realtime endpoint to get the processing status and results:
 
 ```bash
-curl -X GET "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/realtime" \
+curl -X GET "https://api.devic.ai/api/v1/assistants/my-assistant/chats/550e8400-e29b-41d4-a716-446655440000/realtime" \
   -H "Authorization: Bearer devic-your-api-key"
 ```
 
 Or follow it without polling — one connection, one `snapshot` event per change:
 
 ```bash
-curl -N "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/stream" \
+curl -N "https://api.devic.ai/api/v1/assistants/my-assistant/chats/550e8400-e29b-41d4-a716-446655440000/stream" \
   -H "Authorization: Bearer devic-your-api-key" \
   -H "Accept: text/event-stream"
 ```
@@ -605,14 +761,17 @@ produce a small concurrent overrun near a limit.
 
 | Status | Description |
 |--------|-------------|
-| 400 | Invalid input data, provider not configured, or model not supported |
+| 400 | Invalid input data, provider unknown or not configured, model unknown or not of the provider, invalid `previousConversation`, or a template that cannot be rendered |
+| 402 | `error: "BILLING_BLOCKED"` — the account's billing blocks new runs |
 | 404 | Assistant specialization not found |
-| 409 | Chat is currently processing (only when `inputDelayMs` is configured and chat status is `processing`) |
-| 429 | Tenant usage limit exceeded — `error: "TENANT_LIMIT_EXCEEDED"` (see below) |
+| 409 | Async only. `error: "CHAT_BUSY"`: the conversation is busy (run in flight, or waiting on a subagent, timed pause, tool response or user action) and the assistant does not have `messageQueueEnabled`. Also returned when the queue already holds `maxQueuedMessages` messages |
+| 410 | `error: "MODEL_DEPRECATED"` — the effective model was retired; the body carries `replacement` |
+| 429 | Usage limit exceeded — `error` is `TENANT_LIMIT_EXCEEDED`, `USER_LIMIT_EXCEEDED` or `USAGE_LIMIT_EXCEEDED` (see below) |
+| 502 / 503 / 504 | Sync only: the model provider failed (`LLM_*` error codes; 503 rate limited, 504 timeout, 502 otherwise; a cancelled call, `LLM_CANCELLED`, answers 409) |
 
-#### 429 — Tenant usage limit exceeded
+#### 429 — Usage limit exceeded
 
-When the conversation's `tenantId`/`subtenantId` has a configured usage limit that is already consumed, the message is blocked **before** the LLM call and the endpoint returns HTTP `429` with a structured body and a `Retry-After` header:
+When the conversation's `tenantId`/`subtenantId` has a configured usage limit that is already consumed, the message is blocked **before** the LLM call and the endpoint returns HTTP `429` with a structured body (`retryAfter`, in seconds, is in the body; no `Retry-After` header is set):
 
 ```json
 {
@@ -653,33 +812,42 @@ GET /api/v1/assistants/:identifier/chats
 |-----------|------|---------|-------------|
 | `offset` | number | 0 | Number of items to skip |
 | `limit` | number | 10 | Maximum items to return (max: 100) |
-| `omitContent` | boolean | false | Exclude chat content from response (metadata only) |
+| `omitContent` | boolean | false | Exclude `chatContent` from the response (metadata only). Send it only when you want that: the value is not parsed, so `omitContent=false` omits too |
 | `tenantId` | string | - | Filter chat histories by tenant ID |
 | `subtenantId` | string | - | Filter chat histories by subtenant ID (end user/entity inside a tenant) |
 
 ### Response
 
+Newest first (by `creationTimestampMs`). There is no `hasMore`: compare
+`offset + histories.length` with `total`.
+
 ```json
 {
   "success": true,
   "data": {
-    "chats": [
+    "histories": [
       {
-        "chatUid": "chat-123",
-        "assistantSpecializationIdentifier": "default",
-        "createdAt": "2024-01-15T10:00:00.000Z",
-        "updatedAt": "2024-01-15T10:30:00.000Z",
+        "chatUID": "chat-123",
+        "name": "Order status",
+        "assistantSpecializationIdentifier": "my-assistant",
+        "creationTimestampMs": 1705312200000,
+        "lastEditTimestampMs": 1705314000000,
+        "llm": "gpt-5",
+        "provider": "open-ai",
+        "tenantId": "tenant-1",
+        "metadata": { "subtenantId": "user-42" },
         "tags": ["support"],
-        "messages": [...]
+        "chatContent": [...]
       }
     ],
     "total": 25,
     "offset": 0,
-    "limit": 10,
-    "hasMore": true
+    "limit": 10
   }
 }
 ```
+
+Each item has the same fields as [Get Chat History](#get-chat-history).
 
 ---
 
@@ -704,25 +872,45 @@ GET /api/v1/assistants/:identifier/chats/:chatUid
 {
   "success": true,
   "data": {
-    "chatUid": "chat-123",
-    "assistantSpecializationIdentifier": "default",
-    "createdAt": "2024-01-15T10:00:00.000Z",
-    "updatedAt": "2024-01-15T10:30:00.000Z",
+    "chatUID": "chat-123",
+    "name": "Greeting",
+    "assistantSpecializationIdentifier": "my-assistant",
+    "creationTimestampMs": 1705312200000,
+    "lastEditTimestampMs": 1705314000000,
+    "llm": "gpt-5",
+    "provider": "open-ai",
+    "inputTokens": 1200,
+    "outputTokens": 85,
     "tags": ["support"],
     "metadata": {},
-    "messages": [
+    "chatContent": [
       {
+        "uid": "6f1c…",
         "role": "user",
-        "content": "Hello"
+        "content": { "message": "Hello" },
+        "timestamp": 1705312200000
       },
       {
+        "uid": "9a2e…",
         "role": "assistant",
-        "content": "Hi! How can I help you today?"
+        "content": { "message": "Hi! How can I help you today?" },
+        "timestamp": 1705312201000
       }
     ]
   }
 }
 ```
+
+Other fields, present when set: `clientUID`, `userUID`, `contextWindow` (of
+the model, in tokens), `reasoningEffort`,
+`effectiveReasoningEffort`, `tokenUsage`, `tenantId`, `stopReason`,
+`completionError`, `cancelledAt`, `cancelledByUserUID`, `recalledMemories`,
+`coreMemories`, `compactions`, `voiceTurns` and `pinnedMessages`. Messages in
+`chatContent` have `uid`, `role` (`user`, `assistant`, `developer`, `tool`),
+`content` (`{ message?, data?, files? }`), `timestamp`, and when relevant
+`tool_calls`, `tool_call_id`, `summary`, `contentSource`, `source`,
+`synthetic`, `eventType`, `subagent`, `latencyMs`, `messageTokenUsage`,
+`messageCost`.
 
 ### Error Responses
 
@@ -766,10 +954,21 @@ GET /api/v1/assistants/:identifier/chats/:chatUid/realtime
       }
     ],
     "status": "completed",
-    "lastUpdatedAt": 1705312200000
+    "lastUpdatedAt": 1705312200000,
+    "queuedMessages": 0
   }
 }
 ```
+
+When the live state has expired (about an hour), the response is rebuilt from
+the stored conversation. Other fields, present when relevant:
+`streamingMessage`, `pendingToolCalls`, `pendingAsyncToolCalls`,
+`pendingToolApprovals`, `pendingMcpElicitations`, `handedOffSubThreadId`,
+`pausedUntil`, `pausedReason`, `pendingUserMessages` (the queued messages,
+when `queuedMessages` > 0), `stopReason`, `completionError`, `limitExceeded`,
+`recalledMemories`, `compactions` and `compaction` (a compaction running now).
+A `completed` status with `queuedMessages` > 0 is not the end of the exchange:
+the queued messages are still to be answered.
 
 ### Status Values
 
@@ -778,7 +977,9 @@ GET /api/v1/assistants/:identifier/chats/:chatUid/realtime
 | `buffering` | Messages are being collected before processing (see [Message Buffering](#message-buffering-input-delay)) |
 | `processing` | Message is currently being processed by the assistant. The response then also carries `streamingMessage`: the assistant's partial reply so far (`{ role: "assistant", content: { message } }`), when the model is one that streams (OpenAI, Anthropic, Gemini) and the assistant has no guardrails enabled |
 | `waiting_for_tool_response` | The model called a client-side tool; submit its result with `POST …/chats/:chatUid/tool-response` (Model Interface Protocol). The conversation keeps waiting until it is answered: after the live state expires (about an hour), the endpoint rebuilds it from the stored conversation and still reports this status while the last assistant message has unanswered calls (with `pendingAsyncToolCalls` for the ones an external system answers), and a late `tool-response` that answers one of them resumes the turn |
+| `waiting_for_user_action` | Backend tool calls need approval (`pendingToolApprovals`, answer with [tool-approvals](#approve-or-reject-tool-calls)) or an MCP server asked for input (`pendingMcpElicitations`, answer with [mcp-elicitations](#answer-mcp-input-requests)) |
 | `handed_off` | The assistant delegated to a subagent; `handedOffSubThreadId` names the thread to watch |
+| `paused_for_resume` | The assistant paused itself with `pause_and_resume` until `pausedUntil` (`pausedReason` says why); it resumes on its own, or [early](#resume-a-timed-assistant-pause-early) |
 | `limit_exceeded` | A tenant usage limit blocked the message; see `limitExceeded` |
 | `completed` | Processing finished successfully |
 | `error` | An error occurred during processing |
@@ -799,7 +1000,7 @@ async function waitForResult(identifier, chatUid) {
     );
     const result = await response.json();
 
-    if (result.data.status === 'completed') {
+    if (result.data.status === 'completed' && !result.data.queuedMessages) {
       return result.data.chatHistory;
     }
 
@@ -807,7 +1008,8 @@ async function waitForResult(identifier, chatUid) {
       throw new Error('Processing failed');
     }
 
-    // 'buffering' and 'processing' — keep polling
+    // 'buffering', 'processing', 'handed_off', 'paused_for_resume' — keep polling.
+    // 'waiting_for_tool_response' / 'waiting_for_user_action' need your answer.
 
     await new Promise(resolve => setTimeout(resolve, pollInterval));
   }
@@ -820,7 +1022,7 @@ async function waitForResult(identifier, chatUid) {
 
 | Status | Description |
 |--------|-------------|
-| 404 | Real-time chat history not found |
+| 404 | Neither a live state nor a stored conversation exists for this `chatUid` |
 
 ---
 
@@ -853,6 +1055,7 @@ data: {"chatUID":"550e8400-…","status":"processing","chatHistory":[…],"strea
 - `data` is exactly the `data` object the realtime endpoint returns (same fields, same status values). Frames are only sent when something changed; the first one arrives right away with the current state.
 - Comment frames arrive too: `: keep-alive` after 5 s of silence, so proxies keep the connection and you can tell quiet from dead, and `: flush` a few milliseconds after each burst of frames, so browsers that hold back the end of a streamed response until more bytes arrive (Safari, every iOS browser) hand the frame over at once. Ignore both.
 - The server **closes the connection** when the status is terminal (`completed`, `error`, `limit_exceeded`) with nothing queued, or after **60 seconds** in any case. If the last snapshot is not terminal, open it again; nothing is lost because every frame is the full state.
+- `?follow=1` (or `true`) keeps the connection open after a terminal snapshot, so later turns (for example asynchronous subagent results) arrive on the same stream; it still rotates after 60 seconds.
 - `event: reconnect` (empty data) is sent before closing when the server hit an error: open it again.
 - Reads only: opening the stream never runs the model. Send messages with `POST …/messages?async=true` first.
 
@@ -944,6 +1147,12 @@ POST /api/v1/assistants/:identifier/chats/:chatUid/stop
 | `identifier` | string | The unique identifier of the assistant |
 | `chatUid` | string | The unique identifier of the chat conversation |
 
+### Request Body (optional)
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `scope` | string | `turn` | `turn` stops the current response. `conversation` cancels the whole logical run: terminates the assistant's active subagents, suppresses their late results, closes pending tool/hand-off/pause waits and discards queued messages. Any other value is treated as `turn` |
+
 ### Response
 
 ```json
@@ -951,10 +1160,22 @@ POST /api/v1/assistants/:identifier/chats/:chatUid/stop
   "success": true,
   "data": {
     "chatUid": "550e8400-e29b-41d4-a716-446655440000",
-    "message": "Stop requested. The chat will finish its current step and complete."
+    "message": "Stop requested. The chat will finish its current step and complete.",
+    "outcome": "stop_requested",
+    "cancelledSubagentIds": [],
+    "suppressedSubagentResultIds": []
   }
 }
 ```
+
+| `outcome` | Meaning |
+|---|---|
+| `stop_requested` | A run was in flight; it finishes its current step and completes |
+| `tool_wait_closed` | The chat was waiting for tool responses: the pending tool calls were closed and the chat is completed |
+| `conversation_cancelled` | `scope: "conversation"`; `cancelledSubagentIds` lists the subagent executions terminated |
+
+`discardedMessages` (the queued messages the stop threw away) is present only
+when there were any, so a client can put the text back where the user wrote it.
 
 ### Behavior
 
@@ -966,12 +1187,12 @@ POST /api/v1/assistants/:identifier/chats/:chatUid/stop
 
 | Status | Description |
 |--------|-------------|
-| 400 | Chat is not currently processing |
+| 400 | `scope: "turn"`: the chat is neither `processing` nor `waiting_for_tool_response`. `scope: "conversation"`: the chat does not exist |
 
 ### Example
 
 ```bash
-curl -X POST "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/stop" \
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/chats/550e8400-e29b-41d4-a716-446655440000/stop" \
   -H "Authorization: Bearer devic-your-api-key"
 ```
 
@@ -1022,9 +1243,228 @@ The endpoint returns as soon as the continuation starts. Follow `.../stream`
 | 404 | The chat does not belong to the selected assistant |
 
 ```bash
-curl -X POST "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/resume" \
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/chats/550e8400-e29b-41d4-a716-446655440000/resume" \
   -H "Authorization: Bearer devic-your-api-key"
 ```
+
+---
+
+## Submit Tool Responses (Model Interface Protocol)
+
+When the realtime status is `waiting_for_tool_response`, the model called one
+of the client-side `tools` sent with the message. Execute them and send the
+results; the turn continues in the background.
+
+```
+POST /api/v1/assistants/:identifier/chats/:chatUid/tool-response
+```
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `responses` | object[] | Yes | One entry per answered call: `{ tool_call_id: string, role: "tool", content: any, tools?: object[] }`. `tool_call_id` is the `id` of the call in `pendingToolCalls` (or in the last assistant message's `tool_calls`). `tools` optionally replaces the client-side tool schemas for the continuation; omitted, the ones saved with the turn are reused |
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/chats/550e8400-e29b-41d4-a716-446655440000/tool-response" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"responses": [{"tool_call_id": "call_abc123", "role": "tool", "content": {"latitude": 40.71, "longitude": -74.0}}]}'
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "chatUid": "550e8400-e29b-41d4-a716-446655440000",
+    "message": "Tool responses received, processing continues"
+  }
+}
+```
+
+Follow the stream or poll realtime for the rest of the turn. A response sent
+after the live state expired still resumes the turn, as long as it answers a
+call the stored conversation left open.
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | No live state and no response matches an open tool call of the conversation |
+| 404 | Assistant specialization not found |
+
+---
+
+## Approve or Reject Tool Calls
+
+When a backend tool requires approval, the run stops with status
+`waiting_for_user_action` and lists the calls in `pendingToolApprovals` (each
+with `toolCallId`, `toolServerId`, `toolServerName`, `toolName`, `arguments`,
+`categoryIds`, `categories`). Decide **every** pending call in one request:
+approved calls execute once, rejected calls resume with a rejection result.
+
+```
+POST /api/v1/assistants/:identifier/chats/:chatUid/tool-approvals
+```
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `decisions` | object[] | Yes | `[{ toolCallId: string, approved: boolean }]`, exactly one per pending call, no duplicates |
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/chats/550e8400-e29b-41d4-a716-446655440000/tool-approvals" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"decisions": [{"toolCallId": "call_abc123", "approved": true}]}'
+```
+
+### Response
+
+`{ "success": true, "data": { "chatUid": "…", "message": "Tool approval decisions received" } }`.
+The run continues in the background; follow the stream or poll realtime.
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | `decisions` missing or empty, an entry without a string `toolCallId` or a boolean `approved`, or duplicated ids |
+| 404 | Assistant specialization not found |
+| 409 | No pending approvals, a pending call without a decision (or a decision for an unknown call), or the approvals were already resolved |
+
+---
+
+## Answer MCP Input Requests
+
+An MCP server can ask the user for input in the middle of a tool call
+(elicitation). The run stops with status `waiting_for_user_action` and lists
+the requests in `pendingMcpElicitations` (each with `id`, `toolCallId`,
+`toolName`, `mode` (`form` or `url`), `message`, `requestedSchema` for forms and
+`url` for URL mode). Answer **every** pending request in one call.
+
+```
+POST /api/v1/assistants/:identifier/chats/:chatUid/mcp-elicitations
+```
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `decisions` | object[] | Yes | `[{ id: string, action: "accept" \| "decline" \| "cancel", content?: object }]`, one per pending request. `content` is only read on `accept`: a flat object of `string`, `number`, `boolean` or `string[]` values that must satisfy the request's `requestedSchema` |
+
+```bash
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/chats/550e8400-e29b-41d4-a716-446655440000/mcp-elicitations" \
+  -H "Authorization: Bearer devic-your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"decisions": [{"id": "elicit-1", "action": "accept", "content": {"email": "jane@example.com"}}]}'
+```
+
+### Response
+
+`{ "success": true, "data": { "chatUid": "…", "message": "MCP elicitation decisions received" } }`.
+The decisions are validated before this answer; the tool call then resumes in
+the background.
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | `decisions` missing or empty, an invalid `action`, a non-object `content` on `accept`, duplicated ids, or `content` that does not match `requestedSchema` |
+| 404 | Assistant specialization not found |
+| 409 | No pending MCP elicitations, or not exactly one decision per pending request |
+
+---
+
+## Compact a Conversation
+
+Folds the older part of an idle conversation into a persisted checkpoint (a
+summary plus the identifiers, paths, URLs and keys extracted from it), keeping
+the recent turns and the original transcript. Runs even when automatic
+compaction (`contextManagement.compaction`) is disabled.
+
+```
+POST /api/v1/assistants/:identifier/chats/:chatUid/compact
+```
+
+No request body.
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "compacted": true,
+    "checkpoint": { "...": "the new compaction checkpoint" }
+  }
+}
+```
+
+When there is nothing to compact, `compacted` is `false` and `reason` is one of
+`disabled`, `empty`, `below-threshold`, `tail-covers-everything`,
+`nothing-new`, `not-worth-it` or `failed`.
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | The conversation does not exist, belongs to another assistant, or (tenant session) to another tenant/subtenant |
+| 409 | The conversation is not idle: still running or waiting, with queued messages, or already compacting |
+
+---
+
+## Search Messages in a Conversation
+
+Substring search across the messages of one conversation. Returns the matching
+messages by `messageUid` with a snippet.
+
+```
+GET /api/v1/assistants/:identifier/chats/:chatUid/search?q=invoice
+```
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | string | - | Search term (required; an empty `q` returns no results) |
+| `tenantId` | string | - | Restrict to this tenant |
+| `limit` | number | 20 | 1–100 |
+| `offset` | number | 0 | Items to skip |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "data": [
+      {
+        "messageUid": "9a2e…",
+        "source": "chat",
+        "conversationId": "550e8400-e29b-41d4-a716-446655440000",
+        "role": "assistant",
+        "partType": "text",
+        "snippet": "…the invoice was sent on…",
+        "occurredAt": 1705312203000,
+        "assistantId": "…"
+      }
+    ],
+    "pagination": { "total": 1, "limit": 20, "offset": 0, "hasMore": false }
+  }
+}
+```
+
+`partType` is `text`, `tool_call` or `tool_call_response`. When message search
+is not enabled on the deployment the result is empty.
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 404 | Chat not found, or it belongs to another assistant |
 
 ---
 
@@ -1098,12 +1538,12 @@ pinned and without the message.
 ### Example
 
 ```bash
-curl -X POST "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/pins" \
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/chats/550e8400-e29b-41d4-a716-446655440000/pins" \
   -H "Authorization: Bearer devic-your-api-key" \
   -H "Content-Type: application/json" \
   -d '{"messageUid": "5b1d…"}'
 
-curl -X DELETE "https://api.devic.ai/api/v1/assistants/default/chats/550e8400-e29b-41d4-a716-446655440000/pins/5b1d…" \
+curl -X DELETE "https://api.devic.ai/api/v1/assistants/my-assistant/chats/550e8400-e29b-41d4-a716-446655440000/pins/5b1d…" \
   -H "Authorization: Bearer devic-your-api-key"
 ```
 
@@ -1123,18 +1563,27 @@ POST /api/v1/assistants/chats
 |-----------|------|---------|-------------|
 | `offset` | number | 0 | Number of items to skip |
 | `limit` | number | 10 | Maximum items to return (max: 100) |
-| `omitContent` | boolean | false | Exclude chat content from response |
+| `omitContent` | boolean | false | Exclude `chatContent` from the response. The value is not parsed: `omitContent=false` omits too |
 
 ### Request Body (Filters)
 
-Send an empty JSON object `{}` if no filters are needed.
+Send an empty JSON object `{}` if no filters are needed. All filters combine
+with AND. Unknown fields are ignored.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `assistantIdentifier` | string | Filter by assistant identifier |
-| `tags` | string[] | Filter by tags |
-| `startDate` | string | Filter by start date (ISO string) |
-| `endDate` | string | Filter by end date (ISO string) |
+| `assistantSpecializationIdentifier` | string | Only chats of this assistant |
+| `name` | string | Exact conversation name |
+| `archived` | boolean | Archived status |
+| `llm` | string | Model the chat used |
+| `createdAfter` | number | Created at or after this time (epoch **ms**) |
+| `createdBefore` | number | Created at or before this time (epoch **ms**) |
+| `minInputTokens` | number | At least this many input tokens |
+| `minOutputTokens` | number | At least this many output tokens |
+| `tenantId` | string | Tenant ID |
+| `subtenantId` | string | Subtenant ID (matches `metadata.subtenantId`) |
+| `metadata` | object | Each key matches `metadata.<key>` by equality, e.g. `{ "channel": "web" }` |
+| `tags` | string[] | Chats having **any** of these tags |
 
 ### Example Request
 
@@ -1144,9 +1593,14 @@ curl -X POST "https://api.devic.ai/api/v1/assistants/chats?limit=20" \
   -H "Content-Type: application/json" \
   -d '{
     "tags": ["support", "urgent"],
-    "startDate": "2024-01-01T00:00:00.000Z"
+    "createdAfter": 1704067200000
   }'
 ```
+
+### Response
+
+Same shape as [List Chat Histories for Assistant](#list-chat-histories-for-assistant):
+`{ histories, total, offset, limit }`, newest first.
 
 ---
 
@@ -1175,25 +1629,29 @@ When sending messages, you can specify custom providers and models:
 
 ### Supported Providers
 
-- `openai` - OpenAI API
-- `anthropic` - Anthropic API
-- `azure` - Azure OpenAI
-- `google` - Google AI (Gemini)
+- `open-ai` - OpenAI
+- `anthropic` - Anthropic
+- `google-gemini` - Google Gemini
+- `deepseek` - DeepSeek
+- `kimi` - Kimi
+- `xai` - xAI
+
+Any other value answers 400.
 
 ### Example with Custom Model
 
 ```bash
-curl -X POST "https://api.devic.ai/api/v1/assistants/default/messages" \
+curl -X POST "https://api.devic.ai/api/v1/assistants/my-assistant/messages" \
   -H "Authorization: Bearer devic-your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
     "message": "Write a haiku about programming",
     "provider": "anthropic",
-    "model": "claude-3-opus-20240229"
+    "model": "claude-sonnet-4-6"
   }'
 ```
 
-**Note:** The provider must be configured in your account settings before use. The model must belong to the specified provider.
+**Note:** The provider must be configured in your account settings before use. The model must be a known model (list them with `GET /api/v1/models`, see [conversation-options.md](conversation-options.md)) and belong to the specified provider.
 
 ---
 
@@ -1216,6 +1674,7 @@ The `inputDelayMs` field on an assistant configures a **debounce window**. When 
 
 - **Text**: Messages are joined with newline (`\n`) in arrival order
 - **Files**: All files from all buffered messages are flattened into a single array
+- **Images**: Flattened the same way
 
 ### Configuration
 
@@ -1228,14 +1687,41 @@ curl -X PATCH "https://api.devic.ai/api/v1/assistants/my-whatsapp-bot" \
   -d '{ "inputDelayMs": 5000 }'
 ```
 
-To disable buffering, set it to `undefined` or `0`, or omit the field.
+To disable buffering, set it to `0` or `null`.
 
 ### Constraints
 
 - **Async mode only**: Buffering is ignored in synchronous mode
-- **Range**: 500 – 30000 ms
-- **Conflict during processing**: Sending a message while status is `processing` returns `409 Conflict` — the client must wait for completion before sending new messages
+- **Range**: 500 – 30000 ms (not enforced by the API; stay within it)
+- **Sending while a run is in flight**: with `messageQueueEnabled` on the assistant the message is queued (`willProcess: "next_turn"` or `"on_resume"`); without it the send answers `409` with `error: "CHAT_BUSY"`. The delay window itself (`buffering`) always accepts messages
 - **Multi-instance safe**: Uses Redis distributed locks so only one instance processes the buffer
+
+## Long-term Memory (`memory`)
+
+The `memory` object on create/update configures the assistant's long-term
+memory:
+
+```json
+{
+  "memory": {
+    "enabled": true,
+    "mode": "both",
+    "scope": "subtenant",
+    "core": { "enabled": true, "proactive": false }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Master switch |
+| `graph` | boolean | `true` (default) distills a knowledge graph (facts + entities and relations); `false` stores standalone facts only |
+| `inheritShared` | boolean | Also read memory stored at broader scope levels on recall (default `false`) |
+| `mode` | string | `both` (default: automatic recall at conversation start + `search_memory` tool), `tools` (tool only), `inject` (recall only, legacy) |
+| `scope` | string | Bucket level for reads and writes: `subtenant` (default), `tenant`, `assistant` or `client` (one workspace bucket shared by every entity at this level). Levels the conversation does not carry fall back to the next broader one |
+| `owner` | string | Whose bucket family: `self` (default), `project` (shared by the project's entities that opt in) or `user` (follows the person across entities; runs without a person fall back to `self`). Ignored when `bucket` is set |
+| `bucket` | object | Pin reads and writes to one bucket: `{ tenantId?, subtenantId?, entityId? }`, with `entityId` like `assistant:<identifier>`, `agent:<agentId>`, `project:<projectId>` or `user:<userUID>`. `{}` pins the global workspace bucket |
+| `core` | object | Always-injected tier: `{ enabled?: boolean, proactive?: boolean }`. Independent of `enabled`; `proactive` gives the assistant the `update_core_memory` tool |
 
 ## Context Depth
 
@@ -1254,6 +1740,7 @@ On long conversations the full message history sent to the model grows on every 
 |-------|------|-------------|
 | `fullContextTurnDepth` | number | Number of most-recent **turns** sent to the model in full. A turn is a user message and its whole assistant/tool response chain. Older turns are replaced by their summary plus a placeholder that tells the model it is a recap of a previous action. `0` or omitted disables compression (the whole history is sent verbatim — legacy behaviour). |
 | `alwaysIncludeUserMessages` | boolean | When `true`, user messages are always sent in full even if their turn is outside the depth window; only assistant replies and tool interactions get summarized. |
+| `compaction` | object | Opt-in compaction: when the context crosses a share of the model window, everything but the recent tail is folded once into a persisted checkpoint. `{ enabled?: boolean, triggerRatio?: number (0.1–0.95, default 0.75), triggerTokens?: number (absolute ceiling, replaces triggerRatio), keepRecentTurns?: number (default 3), keepRecentTokens?: number (default 20000), model?: { mode?: "primary" (default) \| "secondary" \| "custom", provider?, model? }, instructions?: string, preserveFacts?: boolean (default true), maxFacts?: number (default 80), maxCheckpointTokens?: number (values below ~400 are raised) }`. Compact on demand with [`POST …/compact`](#compact-a-conversation) |
 
 ### How It Works
 
