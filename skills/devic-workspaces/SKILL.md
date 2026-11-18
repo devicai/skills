@@ -105,6 +105,8 @@ echo "texto largo" | devic ws send <wid> <tid> - --client-id weekly-2026-47
 ```
 
 - **Address an assistant** with `--assistant` (`directedAssistantId`), by mentioning it, or by replying to one of its messages. A message that addresses no assistant is posted for the people in the thread.
+- **`--everybody`** notifies everyone who can read the thread (a mention, never an assistant). Use it sparingly: once every 10 minutes per author and thread (`EVERYONE_MENTION_COOLDOWN`), never for guests.
+- **Write to one person privately** with `devic ws dm send <userUID|email> "<text>"`: conversations are account-wide (`devic ws dm list`; their `workspaceId` is the account's hidden space), and need a person, not the integration.
 - **Retries:** `--client-id` (`clientMessageId`) makes them safe. The same id with the same body returns the same message; with a different body it returns `409`.
 - **`--wait`** polls until every run the message started has finished or is waiting for you. It returns `outcome`: `completed`, `failed`, `waiting` or `no_invocations`.
   - In JSON mode it first prints NDJSON status lines, then the final document.

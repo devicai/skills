@@ -38,16 +38,20 @@ devic ws get <wid> | catalog
 devic ws create  [--data <json|file|->] [--name] [--description] [--visibility]
 devic ws update <wid> [--data ...] [--name] [--description] [--visibility] [--archive|--unarchive] [--revision]
 
-devic ws threads list [--workspace <wid>] [--search] [--unread] [--archived] [--offset] [--limit]
+devic ws threads list [--workspace <wid>] [--kind direct|shared] [--search] [--unread] [--archived] [--offset] [--limit]
 devic ws threads get <wid> <tid> [--limit] [--before <seq>]
 devic ws threads messages <wid> <tid> [--before <seq> | --after <seq>] [--limit]
-devic ws threads create <wid> [--title] [--direct --user <uid>]
+devic ws threads create <wid> [--title] [--direct --user <uid>]   # --direct: the account-wide conversation
+
+devic ws dm list                                 # private conversations: {workspaceId, items}
+devic ws dm open <userUID|email>                 # the conversation with that person (same one if it exists)
+devic ws dm send <userUID|email> <text|->        # opens it if needed, then posts
 devic ws threads rename <wid> <tid> <title>
 devic ws threads archive|unarchive <wid> <tid>
 devic ws threads read <wid> <tid> [--through <seq>]
 devic ws threads unread <wid> <tid>
 
-devic ws send <wid> <tid> <text|-> [--assistant <aid>] [--mention kind:id[:label]]...
+devic ws send <wid> <tid> <text|-> [--assistant <aid>] [--mention kind:id[:label]|everyone]... [--everybody]
                                    [--reply-to <mid>] [--client-id <id>]
                                    [--wait [--timeout <s>] [--poll-interval <s>]]
 devic ws answer <wid> <tid> <invocationId> (--answers <json|file|-> | --skip)
@@ -115,6 +119,14 @@ NDJSON lines `{"type":"workspace_invocation",...}` before the final document.
 
 `--client-id` sets `clientMessageId`, so retrying the same send does not post
 twice.
+
+**Direct messages** are account-wide (not inside a workspace): `dm list` gives the
+hidden space's `workspaceId`, and every thread command works on them with it. They
+need a person: an API key without `--as` gets `DIRECT_MESSAGES_REQUIRE_USER`.
+
+**`--everybody`** mentions everyone who can read the thread (adds `@everybody` to the
+text if missing). Not for guests (`EVERYONE_MENTION_NOT_ALLOWED`); once every 10
+minutes per author and thread (`EVERYONE_MENTION_COOLDOWN`, the message is not posted).
 
 ## Answering questions
 

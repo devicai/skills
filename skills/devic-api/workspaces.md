@@ -67,7 +67,9 @@ Messages written in the apps have no `origin`.
 | GET | `/api/v1/workspaces` | List workspaces (`search`, `includeArchived`, `withSummary`, `offset`, `limit`) |
 | POST | `/api/v1/workspaces` | Create a workspace |
 | GET | `/api/v1/workspaces/catalog` | Assistants and people available to configure workspaces |
-| GET | `/api/v1/workspaces/threads` | Threads across every workspace (`workspaceId`, `search`, `unread`, `includeArchived`, `offset`, `limit`) |
+| GET | `/api/v1/workspaces/threads` | Threads across every workspace, private conversations included (`workspaceId`, `kind=direct\|shared`, `search`, `unread`, `includeArchived`, `offset`, `limit`) |
+| GET | `/api/v1/workspaces/direct-messages` | Your private conversations: `{ workspaceId, items }` |
+| POST | `/api/v1/workspaces/direct-messages` | Open the conversation with a person (`userUID` or `email`) |
 | GET | `/api/v1/workspaces/{wid}` | Get a workspace |
 | PATCH | `/api/v1/workspaces/{wid}` | Update its settings |
 | PUT | `/api/v1/workspaces/{wid}/members/{userUID}` | Add a member or change their role |
@@ -200,7 +202,30 @@ runs the message started; follow them with `messages?after=`.
 
 - `clientMessageId` makes retries safe. If you send the same id with the same body again, you get the same message back. The same id with a different body returns `409 CLIENT_MESSAGE_ID_REUSED`. If you leave it out, one is generated.
 - To ask an assistant, set `directedAssistantId`, mention it, or reply (`replyToMessageId`) to one of its messages.
+- **`@everybody`** notifies everyone who can read the thread, like a mention, and never asks an assistant: add `{ "kind": "everyone", "id": "everyone", "label": "everybody" }` to `mentions` **and** `@everybody` (or `@everyone`) to the text. Guests from another account get `403 EVERYONE_MENTION_NOT_ALLOWED`; one author can use it once every 10 minutes per thread, otherwise `429 EVERYONE_MENTION_COOLDOWN` and the message is **not** posted.
 - The author and the origin come from the principal. The body cannot set them.
+
+## Direct messages
+
+Private conversations are **account-wide**: any two people of the account can have
+one, whatever workspaces they share. They all live in one hidden space of the
+account, never listed as a workspace.
+
+```http
+GET /api/v1/workspaces/direct-messages
+X-Devic-User: ana@acme.io
+→ { "workspaceId": "dm-space-id", "items": [ { "id": "t1", "kind": "direct", "directUserUIDs": ["u-ana", "u-bea"], ... } ] }
+
+POST /api/v1/workspaces/direct-messages
+{ "email": "bea@acme.io" }            // or { "userUID": "u-bea" }
+→ the thread (the same one if it already exists)
+```
+
+- `workspaceId` is `null` until the account has its first conversation.
+- Read, write, mark read and download files with the usual thread endpoints, using that `workspaceId`: `/api/v1/workspaces/{workspaceId}/threads/{tid}/...`.
+- Only the two participants can open a conversation. The account integration (an API key without `X-Devic-User`) has no private conversations: `403 DIRECT_MESSAGES_REQUIRE_USER`.
+- `POST /{wid}/threads { "kind": "direct", "userUID" }` still works and returns the same account-wide conversation. Old `wid`/`tid` pairs of a conversation keep resolving.
+- Errors: `RECIPIENT_NOT_IN_ACCOUNT`, `INVALID_RECIPIENT` (yourself). A conversation being moved returns `503 DIRECT_MESSAGE_MIGRATING` for a few seconds: retry.
 
 ## Answer an assistant's questions
 
@@ -282,6 +307,10 @@ Errors return `{ "error": "CODE", "message": … }`. Common codes:
 - `WORKSPACE_ADMIN_REQUIRED`
 - `WORKSPACE_THREAD_NOT_FOUND`
 - `PRIVATE_CONVERSATION`
+- `DIRECT_MESSAGES_REQUIRE_USER`
+- `RECIPIENT_NOT_IN_ACCOUNT`
+- `EVERYONE_MENTION_NOT_ALLOWED`, `EVERYONE_MENTION_COOLDOWN` (429)
+- `DIRECT_MESSAGE_MIGRATING` (503, retry)
 - `INVALID_LIMIT`
 - `INVALID_MESSAGE_CURSOR`
 - `WORKSPACE_INPUT_CONFLICT`
