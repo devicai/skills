@@ -1,6 +1,6 @@
 ---
 name: devic-workspaces
-description: "Devic Workspaces from code and the terminal — shared spaces where people and assistants work in threads. Use when reading or searching a person's threads (across workspaces, only unread, paginated), reading a thread's messages, writing a message as a person or as an integration and waiting for the assistant's reply, answering an assistant's questions or approving its tool calls, downloading the files a thread produced, or configuring a workspace (members, assistants, knowledge and skills, rules, core memory, automations) through the public API (/api/v1/workspaces) or the CLI (devic workspaces / devic ws)."
+description: "Devic Workspaces from code and the terminal — shared spaces where people and assistants work in threads. Use when reading or searching a person's threads (across workspaces, only unread, paginated), reading a thread's messages, writing a message as a person or as an integration and waiting for the assistant's reply, answering an assistant's questions or approving its tool calls, downloading the files a thread produced, or configuring a workspace (members, assistants, knowledge and skills, rules, core memory), building automations (app events, schedules, on-demand routines) and connecting the app accounts they use, through the public API (/api/v1/workspaces) or the CLI (devic workspaces / devic ws)."
 ---
 
 # Devic Workspaces
@@ -179,6 +179,36 @@ devic ws automations list <wid>
 - **Skills** are linked as `{type: document|folder, id}` in `resources.knowledgeSkills`. Create or edit a skill's content with the Skills API or `devic skills`, then attach it here.
 - **Core memory** holds what an assistant always reads in this workspace. Sections are `persona`, `instructions`, `decisions` and `profile`, and `content` is at most 4000 characters.
 - **Writes that carry a `revision`** (rules, resources, members, assistants) return `409` if someone changed the object in between. The CLI fills in the current revision.
+
+## 7b. Build an automation
+
+An automation reacts to an app event, runs on a schedule or runs on demand, and
+posts in a destination workspace. You save a **draft**; **a person activates
+it**. The full plan contract is in `devic-api` → `workspaces.md`, *Automations*.
+
+```bash
+devic ws automations capabilities <wid>                       # cron? app events? included model?
+devic ws automations destinations <wid>                       # where it may post
+devic ws automations connections <wid>                        # accounts it may use
+devic ws integrations search <wid> "meeting recordings" --semantic        # app missing?
+devic ws connections connect <wid> fathom --scope workspace   # → authorization link for the person
+devic ws automations triggers <wid> --integration fathom --query recording
+devic ws automations trigger <wid> <slug>                      # config schema + setup instructions
+devic ws automations connection-tools <wid> <connectionId>    # exact tool names to grant
+devic ws automations find-threads <wid> <target> --query acme --search-in all
+devic ws automations schedule-preview <wid> --data '{"expression":"0 9 * * 1-5","timezone":"Europe/Madrid"}'
+devic ws automations create <wid> --name "Meeting summaries"
+devic ws automations draft <wid> <id> --data plan.json        # validated; never activates
+devic ws automations activate <wid> <id> --included           # only when the person says so
+```
+
+- **Discover, never guess.** Trigger slugs, connection ids and tool names come from the listings above; the validation rejects anything else before writing.
+- **A missing app is a link, not a dead end.** `connections connect` returns the provider's consent link. The person opens it; nothing is connected until they finish. Shared workspaces need `--scope workspace` (an account for everyone).
+- **Write instructions a run can follow alone**: how to identify the customer or record, how to find the existing thread (stable source ids in message text first), when to create a new one, what to post, and what to do when the match is ambiguous.
+- **Schedules** need an explicit IANA time zone. Ask for it, and show the preview dates.
+- **Grant the minimum**: only the tools each run needs, per account.
+- **`--draft-version`** guards against overwriting someone else's edit (`409 AUTOMATION_DRAFT_CHANGED`).
+- **Activation is the approval.** Show the plan, then activate with the model the person chooses: `--included`, or `--provider` and `--model` with the account's own key.
 
 ## 8. Permissions (same as the app)
 
