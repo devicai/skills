@@ -335,6 +335,10 @@ The app has a designer assistant that writes drafts in a conversation. Through
 the API you compose the draft yourself with the same reads the designer uses,
 and with the same validation.
 
+> **Step by step:** [workspace-automations.md](workspace-automations.md) is the
+> recipe for an agent building an automation for someone (MCP tool names and
+> endpoints, decisions to ask, validation errors, when to stop).
+
 Everything needs `manageContent` on the automation's workspace (its owner or a
 manager), except listing automations and runs, which needs `read`. Automations
 run on behalf of whoever created them. One created by the account integration
