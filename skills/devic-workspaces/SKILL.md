@@ -141,7 +141,18 @@ POST /api/v1/workspaces/{wid}/threads/{tid}/invocations/{runId}/approve
 ```
 
 A stale `revision` returns `409`. Read the thread again and retry. Other
-actions (`cancel`, `retry`, …) go through `devic ws run-action`.
+actions (`cancel`, `retry`, `publish`, `resolve`, …) go through `devic ws run-action`;
+the states and what each one accepts are in `devic-api` → `workspaces.md`, *Runs*.
+
+- **Only the person who started a run can answer, approve or cancel it**
+  (`403 WORKSPACE_INVOCATION_OWNER_REQUIRED`). Acting for someone else's run means
+  acting **as** that person, with `--as`.
+- **There is no reject.** To refuse a tool call, cancel the run.
+- **Cancelling while a tool runs** leaves the run `outcome_unknown`: the effect
+  may have happened. Check it, then `run-action … resolve --data '{"revision":…,"acknowledged":true}'`.
+- **A question to an assistant that mentions no person is private** until the
+  run completes; a reply built on your own connected accounts stays a draft
+  (`awaiting_publication`) until you `publish` it.
 
 ## 6. Files and documents
 

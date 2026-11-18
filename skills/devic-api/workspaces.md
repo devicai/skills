@@ -162,7 +162,9 @@ This covers every workspace you can see, or one workspace with `workspaceId`
 ```
 
 - `unreadCount` counts messages from others after your last read.
-- `waitingForMe` counts runs waiting for you, for example a question or an approval.
+- `waitingForMe` counts your runs waiting for you, for example a question or an approval.
+- `kind` is `direct` (private conversations) or `shared` (everything else).
+- Lists return 20 items by default. `limit` is at most 100, and a larger value returns `400 INVALID_LIMIT` instead of being lowered.
 
 ## Read a thread
 
@@ -239,10 +241,39 @@ POST /api/v1/workspaces/{wid}/threads/{tid}/invocations/{runId}/answer
 
 To skip the questions, send `{ "revision": 63, "inputId": "call_…", "skipped": true }`.
 
-Other actions use the same route with their own name, such as `cancel` and `retry`.
-
 To approve a tool call, send `approve` when the run is `waiting_approval`. The body needs the run's `revision` and `requestedAction.id`:
 `{ "revision": 14, "actionId": "call_…", "always": false }`. Set `always: true` to also allow this tool from now on, if the run permits it.
+There is no "reject" action: to refuse a tool call, `cancel` the run.
+
+## Runs: states and actions
+
+Every action goes through `POST /{wid}/threads/{tid}/invocations/{runId}/{action}`.
+**Only the person who started a run can act on it**: anyone else gets
+`403 WORKSPACE_INVOCATION_OWNER_REQUIRED`, even an owner or a manager of the
+workspace. A run started by the account integration can only be driven by the
+integration. `waitingForMe` counts only your own runs.
+
+| Status | Meaning | Actions |
+|---|---|---|
+| `queued`, `running` | Working | `cancel`, `pause` |
+| `paused` | Stopped by `pause` | `resume`, `cancel` |
+| `waiting_input` | Asked questions (`requestedInput`) | `answer` |
+| `waiting_approval` | Wants to run a tool (`requestedAction`) | `approve`, `cancel` |
+| `waiting_connection` | Needs a connected account | `continue` with `{ "connectionIds": [ … ] }` |
+| `awaiting_publication` | A private draft only you can see | `publish`, `revise` (`{ revision, text }`), `discard` (`{ revision }`) |
+| `outcome_unknown` | Cancelled while a tool was already running: the effect may have happened | `resolve` with `{ "revision": …, "acknowledged": true }`, after checking |
+| `failed` | Failed | `retry`, only if `retryable` and no tool had started (`WORKSPACE_UNSAFE_RETRY` otherwise) |
+| `completed`, `cancelled` | Finished | — |
+
+- Actions that carry `revision` fail with `409` when the run changed in between. Read the thread again and retry.
+- `cancel` works in any state that is not finished, and returns a finished run unchanged.
+- An unknown action returns `400 INVALID_INVOCATION_ACTION`.
+
+**Private requests.** A message that asks an assistant and mentions no person
+is visible only to you while the run works. When the run completes, the request
+and the reply appear in the thread together. If the reply used data only you can
+reach, such as your own connected accounts, it stays a private draft
+(`awaiting_publication`) until you `publish` it.
 
 ## Read state
 
@@ -313,7 +344,9 @@ Errors return `{ "error": "CODE", "message": … }`. Common codes:
 - `DIRECT_MESSAGE_MIGRATING` (503, retry)
 - `INVALID_LIMIT`
 - `INVALID_MESSAGE_CURSOR`
-- `WORKSPACE_INPUT_CONFLICT`
+- `WORKSPACE_INPUT_CONFLICT`, `WORKSPACE_APPROVAL_CONFLICT` (stale `revision`, or the run is no longer waiting)
+- `WORKSPACE_INVOCATION_OWNER_REQUIRED` (the run belongs to someone else)
+- `WORKSPACE_UNSAFE_RETRY`
 
 API keys restricted with `allowedEndpoints` need `/api/v1/workspaces/*`. OAuth
 apps need the `workspaces:read` and `workspaces:write` scopes, or a
