@@ -5,8 +5,9 @@ Devic Workspaces automation for a person: a routine that reacts to an app
 event, runs on a schedule, or runs on demand, and posts its results in a
 workspace thread.
 
-Each step names the **Devic MCP tool** and the **API endpoint** behind it
-(`/api/v1/workspaces/{wid}/…`). The endpoint contracts are in
+Each step names the **Devic MCP tool** (on the Devic Workspaces MCP,
+`https://workspaces.mcp.devic.ai/mcp`, or the Devic API MCP) and the **API
+endpoint** behind it (`/api/v1/workspaces/{wid}/…`). The endpoint contracts are in
 [workspaces.md](workspaces.md), *Automations* and *Integrations*.
 
 **The rule that shapes everything:** you save a **draft**; **the person
