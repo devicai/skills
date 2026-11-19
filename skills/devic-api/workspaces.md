@@ -10,6 +10,16 @@ action needs the same workspace role as in the apps.
 
 **Base path:** `/api/v1/workspaces`
 
+**As MCP tools:** every operation here is also a tool (`workspaces_*`, same
+arguments, `body` = the request body below) on two MCP servers. Both sign the
+person in over OAuth, with no API key:
+
+- **Devic Workspaces**, `https://workspaces.mcp.devic.ai/mcp`: only these
+  tools, scopes `workspaces:read|write`, sign-in on workspaces.devic.ai. Use it
+  for people who work in Workspaces.
+- **Devic API**, `https://devic.mcp.devic.ai/mcp`: these tools plus the rest of
+  the platform, sign-in on app.devic.ai.
+
 ---
 
 ## Who a request acts as
