@@ -82,6 +82,7 @@ Messages written in the apps have no `origin`.
 | POST | `/api/v1/workspaces/direct-messages` | Open the conversation with a person (`userUID` or `email`) |
 | GET | `/api/v1/workspaces/{wid}` | Get a workspace |
 | PATCH | `/api/v1/workspaces/{wid}` | Update its settings |
+| PATCH | `/api/v1/workspaces/{wid}/consumer-permissions` | Set what Members with the Consumer role can do (owner only) |
 | PUT | `/api/v1/workspaces/{wid}/members/{userUID}` | Add a member or change their role |
 | DELETE | `/api/v1/workspaces/{wid}/members/{userUID}` | Remove a member |
 | GET | `/api/v1/workspaces/{wid}/assistants` | List its assistants |
@@ -136,6 +137,63 @@ Messages written in the apps have no `origin`.
 | owner | Workspace owner | Ownership and owner-only settings |
 
 Consumer users can do through the API exactly what they can do in the app.
+In a shared workspace, what a **member whose account role is `consumer`** (and
+any guest from another account) can do is set by the workspace's
+[consumer permissions](#consumer-permissions), not by the table above.
+
+### Consumer permissions
+
+A shared workspace keeps a policy, `consumerPermissions`, with one boolean per
+action. It applies to **members and viewers whose account role is `consumer`,
+and to guests from other Devic accounts**. Owners and managers keep their role's
+permissions (table below), viewers stay read-only, and members with a `user` or
+`admin` account role are not limited by it. Personal workspaces and direct
+messages have no policy.
+
+| Key | Default | Allows | Owner / Manager get it through |
+|-----|---------|--------|--------------------------------|
+| `write` | `true` | Participate in threads and run assistants. **Every other key needs it** | write |
+| `createThreads` | `true` | Create threads | write |
+| `uploadFiles` | `true` | Upload, publish and remove thread files | write |
+| `editCanvas` | `true` | Edit the thread canvas | write |
+| `editThreadRules` | `false` | Edit thread rules | write |
+| `editCoreMemory` | `false` | Edit assistants' shared core memory | write |
+| `useSharedConnections` | `true` | Use the workspace's shared integrations | write |
+| `usePersonalConnections` | `true` | Connect and use their own integrations | write |
+| `editWorkspaceRules` | `false` | Edit workspace rules | manage (account admin) |
+| `manageAssistants` | `false` | Create and configure workspace assistants | manage (account admin) |
+| `manageSkills` | `false` | Manage workspace skills | manageContent |
+| `manageAutomations` | `false` | Manage workspace automations | manageContent |
+| `manageSharedConnections` | `false` | Manage shared integrations and MCP servers | manageContent |
+| `inviteMembers` | `false` | Invite members and viewers | manageContent |
+
+- The management keys (`editWorkspaceRules`, `manageAssistants`, `manageSkills`, `manageAutomations`, `manageSharedConnections`, `inviteMembers`) are never granted to guests from another account, whatever the policy says.
+- `useSharedConnections` / `usePersonalConnections` combine with the workspace's `integrationPermissions` and each member's override: both must allow it.
+- Account administration, ownership, member roles, shared account catalogs and environment configuration can never be delegated through this policy.
+
+**Read it:** `GET /{wid}` returns `consumerPermissions` (all 14 keys), `policyRevision`, and `capabilities`. For the caller, `capabilities.manageConsumerPermissions` is `true` only for the workspace owner, and a consumer member sees the policy that applies to them in `capabilities.permissions`.
+
+**Change it** (workspace owner only, as a person — an API key without `X-Devic-User` acts as a manager and is refused):
+
+```http
+PATCH /api/v1/workspaces/{wid}/consumer-permissions
+{
+  "revision": 7,
+  "consumerPermissions": {
+    "write": true, "createThreads": false, "uploadFiles": true, "editCanvas": true,
+    "editThreadRules": false, "editCoreMemory": false,
+    "useSharedConnections": true, "usePersonalConnections": true,
+    "editWorkspaceRules": false, "manageAssistants": true, "manageSkills": false,
+    "manageAutomations": false, "manageSharedConnections": false, "inviteMembers": false
+  }
+}
+```
+
+- `revision` is the workspace's **`policyRevision`** (not `revision`). A stale one returns `409 WORKSPACE_REVISION_CONFLICT`: read the workspace again and retry.
+- The body is a **complete replacement**: send all 14 keys as booleans. A missing or unknown key returns `400 INVALID_CONSUMER_PERMISSIONS`.
+- Returns the updated workspace.
+- A refused action returns `403` with `{ "error": "WORKSPACE_CONSUMER_PERMISSION_DENIED", "code": "WORKSPACE_CONSUMER_PERMISSION_DENIED", "permission": "createThreads", "message": "Ask a workspace owner to enable this consumer permission in Participants." }`. Don't retry: only the owner can change it.
+- A non-owner changing the policy gets `403` with `"message": "WORKSPACE_OWNER_REQUIRED"`. As with `409 WORKSPACE_REVISION_CONFLICT` and `400 INVALID_CONSUMER_PERMISSIONS`, the code comes in `message`.
 
 ---
 
@@ -313,6 +371,7 @@ Settings use the same bodies as the app.
 
 - **Settings:** `PATCH /{wid}` with `{ name, description, logoUrl, visibility, assistantIds, intervention, archived, integrationPermissions, experimentalFeatures, revision }`.
 - **Members:** `PUT /{wid}/members/{userUID}` with `{ role: "owner" | "manager" | "member" | "viewer", revision? }`. `DELETE` removes the member.
+- **Consumer permissions:** `PATCH /{wid}/consumer-permissions` with `{ revision: policyRevision, consumerPermissions: {…all 14 keys} }`. Owner only. See [Consumer permissions](#consumer-permissions).
 - **Assistants:** `POST /{wid}/assistants` and `PATCH /{wid}/assistants/{aid}` take the assistant's configuration (name, model, instructions, tools, `knowledgeSkills`, …). `DELETE` takes `?revision=` for a safe removal.
 - **Resources:** `PUT /{wid}/resources` with `{ knowledgeSkills?, knowledge?, environment?, revision? }`. Find candidates with `GET /{wid}/skills/catalog` and `GET /{wid}/knowledge/catalog`. Create or edit a skill's content with the Documents API (`POST /api/v1/documents/skills/scaffold`, `PATCH /api/v1/documents/{id}`; see `documents.md`), then attach it here.
 - **Rules:** `PUT /{wid}/rules` (or `/{wid}/threads/{tid}/rules`) with `{ content, expectedRevision }`. A stale `expectedRevision` returns `409`.
@@ -461,6 +520,9 @@ Errors return `{ "error": "CODE", "message": … }`. Common codes:
 - `WORKSPACE_READ_ONLY`
 - `WORKSPACE_MANAGER_REQUIRED`
 - `WORKSPACE_ADMIN_REQUIRED`
+- `WORKSPACE_OWNER_REQUIRED`
+- `WORKSPACE_CONSUMER_PERMISSION_DENIED` (with `permission`: the policy key that is off)
+- `INVALID_CONSUMER_PERMISSIONS`, `WORKSPACE_REVISION_CONFLICT` (409)
 - `WORKSPACE_THREAD_NOT_FOUND`
 - `PRIVATE_CONVERSATION`
 - `DIRECT_MESSAGES_REQUIRE_USER`

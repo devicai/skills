@@ -220,14 +220,23 @@ devic ws automations activate <wid> <id> --included           # only when the pe
 | manage | owner or manager who is also an account admin | settings, members, assistants, knowledge, workspace rules |
 | owner | workspace owner | ownership |
 
-Consumer users can do the same through the API as in the app: they can write
-messages but cannot change settings or rules.
+Consumer users can do the same through the API as in the app. In a shared
+workspace, members with the `consumer` account role (and guests from other
+accounts) are governed by the workspace's **consumer permissions**: 14 booleans
+such as `createThreads`, `uploadFiles`, `editThreadRules`, `manageAssistants` or
+`inviteMembers`. By default they can participate, create threads, upload files,
+edit the canvas and use integrations, and nothing else. A refused action returns
+`403 WORKSPACE_CONSUMER_PERMISSION_DENIED` with the `permission` key that is off:
+tell the person to ask a workspace owner, don't retry.
+
+- Read the policy in `devic ws get <wid>` → `consumerPermissions`, `policyRevision`; your own effective policy is in `capabilities.permissions`.
+- Only the **workspace owner** can change it, with `PATCH /api/v1/workspaces/{wid}/consumer-permissions` (`{revision: policyRevision, consumerPermissions: {all 14 keys}}`). There is no `devic ws` command for it yet. Full key list in `devic-api` → `workspaces.md`, *Consumer permissions*.
 
 ## 9. Credentials and access
 
 - **API keys with `allowedEndpoints`** need the "Workspaces" group (`/api/v1/workspaces/*`).
 - **OAuth apps** need `workspaces:read` or `workspaces:write`, or a `platform:*` scope.
-- **Responses** use the public envelope `{success, data}`. Errors come as `{error: CODE, message}`, for example `WORKSPACE_ACCESS_DENIED`, `WORKSPACE_READ_ONLY`, `WORKSPACE_MANAGER_REQUIRED`, `PRIVATE_CONVERSATION`, `WORKSPACE_INPUT_CONFLICT` or `WORKSPACE_APPROVAL_CONFLICT`.
+- **Responses** use the public envelope `{success, data}`. Errors come as `{error: CODE, message}`, for example `WORKSPACE_ACCESS_DENIED`, `WORKSPACE_READ_ONLY`, `WORKSPACE_MANAGER_REQUIRED`, `WORKSPACE_CONSUMER_PERMISSION_DENIED`, `PRIVATE_CONVERSATION`, `WORKSPACE_INPUT_CONFLICT` or `WORKSPACE_APPROVAL_CONFLICT`.
 
 ---
 
