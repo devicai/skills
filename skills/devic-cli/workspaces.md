@@ -108,6 +108,9 @@ devic ws automations run <wid> <runId> [--summary] | rerun <wid> <runId>
 
 ---
 
+A routine draft can grant native OCR and shell access through its plan JSON.
+For example, `"nativeTools":{"ocr":true,"sandbox":"workspace"}` grants OCR and commands in the home workspace’s shared environment when that version is activated. Choose `"sandbox":"clean"` for an isolated sandbox per run, or omit `sandbox` for no shell access. Omit `ocr` to leave native OCR off.
+
 ## Reading threads
 
 - `threads list` without `--workspace` covers **every workspace** you see.

@@ -464,7 +464,7 @@ The `PUT .../draft` body is the plan.
 | `connectionId`, `triggerSlug`, `triggerConfig` | App events only: the account the trigger listens on, and its configuration |
 | `connections` | `[{ connectionId, externalTools, alwaysLoadedTools? }]`: the tools each account grants to the runs. It may be empty. Include the trigger account only if its tools are needed. `alwaysLoadedTools` is a subset loaded from the first call; the rest are discovered on demand |
 | `targetAssistantId` | Optional assistant of the destination that each run asks to answer |
-| `nativeTools` | `{ "alwaysLoadedTools": ["search_web", "web_extract"] }` to load web search from the first call. Runs can always discover them |
+| `nativeTools` | `{ "alwaysLoadedTools": ["search_web", "web_extract"] }` to load web search from the first call. Runs can always discover them. Add `"ocr": true` for native document OCR and optionally `"sandbox": "workspace"` (shared files and credentials) or `"sandbox": "clean"` (isolated per execution). Both grants default off and require activation |
 | `version` | Optional: the current `draftVersion`. If someone saved another version in between, the save returns `409 AUTOMATION_DRAFT_CHANGED` and writes nothing |
 
 Each save that passes validation increments `draftVersion`. A plan that fails
