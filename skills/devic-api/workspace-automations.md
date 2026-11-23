@@ -77,6 +77,8 @@ If the app the routine needs is not in the connections listing:
   - `workspaces_automation_find_threads` (`GET automations/destinations/{target}/threads`). With `searchIn: "messages"` and `mode: "literal"` it finds stable source ids (a Gmail `thread_id`, a CRM id) in message text, which is the most reliable match.
   - `workspaces_automation_read_thread` (`GET …/threads/{tid}`) confirms a candidate.
 - **An assistant.** If each run should hand the result to a workspace assistant, take its exact id from `workspaces_automation_destination_assistants` (`GET automations/destinations/{target}/assistants`) and put it in `targetAssistantId`. An `@name` in text invokes nobody.
+- **Native OCR.** Set `nativeTools.ocr` to `true` to let runs load `ocr_document` for a PDF or image URL. OCR can be granted independently of sandbox access.
+- **Sandbox.** Set `nativeTools.sandbox` to `"workspace"` to run commands with `workspace_terminal` and read, write or list files and create directories in the home workspace’s shared environment. Commands can use its configured credentials. The server pins its ID in `sandboxEnvironmentId`. If the environment changes, review the replacement and activate a new draft. Set `"clean"` for a fresh sandbox per run with native terminal and file tools. Clean sessions have their own filesystem and start without workspace variables, snapshots or initialization scripts. Omit the field to leave shell access off.
 - **Web.** Runs can always discover web search and page reading. Set `nativeTools.alwaysLoadedTools` only if every run needs them.
 
 ## 5. Write the instructions
